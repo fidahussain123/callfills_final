@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lead-intel",
+      "runtimeExecutable": "uvicorn",
+      "runtimeArgs": ["api.main:app", "--host", "127.0.0.1", "--port", "8123"],
+      "port": 8123
+    }
+  ]
+}

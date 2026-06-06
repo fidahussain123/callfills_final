@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% if mode == 'signup' %}Create account{% else %}Sign in{% endif %} · Callfills</title>
+  <link rel="icon" type="image/png" href="/static/favicon.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: {
+        fontFamily: {
+          sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+          jakarta: ['"Plus Jakarta Sans"', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        },
+        colors: {
+          canvas: "rgb(var(--c-canvas) / <alpha-value>)",
+          panel: "rgb(var(--c-panel) / <alpha-value>)",
+          surface: "rgb(var(--c-surface) / <alpha-value>)",
+          edge: "rgb(var(--c-edge) / <alpha-value>)",
+          ink: "rgb(var(--c-ink) / <alpha-value>)",
+          muted: "rgb(var(--c-muted) / <alpha-value>)",
+          brand: "#9a28ff", brandmed: "#7a4aff", brandlight: "#ca7fff",
+        },
+        boxShadow: {
+          brand: "0 8px 22px -8px rgba(154,40,255,0.45)",
+          card: "0 1px 2px 0 rgba(13,15,23,0.04), 0 1px 3px 0 rgba(13,15,23,0.05)",
+        },
+        backgroundImage: { 'brand-gradient': "linear-gradient(135deg, #9a28ff 0%, #7a4aff 100%)" },
+      } },
+    };
+  </script>
+  <script>
+    (function () { try { if (localStorage.getItem('cf-theme') === 'dark') document.documentElement.classList.add('dark'); } catch (e) {} })();
+  </script>
+  <style>
+    :root { --c-canvas: 248 249 251; --c-panel: 255 255 255; --c-surface: 243 244 248; --c-edge: 228 230 238; --c-ink: 16 18 27; --c-muted: 100 106 124; }
+    html.dark { --c-canvas: 9 10 14; --c-panel: 19 21 29; --c-surface: 28 31 41; --c-edge: 38 42 54; --c-ink: 244 245 250; --c-muted: 148 154 172; }
+    body { background-color: rgb(var(--c-canvas)); font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    @keyframes cfRise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: translateY(0) } }
+    .cf-rise { animation: cfRise .5s cubic-bezier(.21,.6,.35,1) both; }
+  </style>
+</head>
+<body class="h-full text-slate-600 dark:text-slate-300 antialiased">
+  <div class="min-h-full grid lg:grid-cols-[1.05fr_1fr]">
+
+    <!-- Left: brand panel (always dark — enterprise feel) -->
+    <div class="relative hidden lg:flex flex-col justify-between overflow-hidden p-12 text-white"
+         style="background:#0a0b10;">
+      <!-- atmospheric brand glow -->
+      <div class="absolute inset-0 opacity-90" style="background:
+        radial-gradient(620px 380px at 78% 8%, rgba(154,40,255,0.30), transparent 60%),
+        radial-gradient(540px 420px at 12% 92%, rgba(122,74,255,0.22), transparent 62%);"></div>
+      <!-- faint grid -->
+      <div class="absolute inset-0 opacity-[0.14]" style="background-image:
+        linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px);
+        background-size: 44px 44px; mask-image: radial-gradient(circle at 50% 40%, #000, transparent 78%);"></div>
+
+      <div class="relative flex items-center gap-3">
+        <div class="h-10 w-10 rounded-xl bg-brand-gradient grid place-items-center ring-1 ring-white/20 shadow-brand">
+          <img src="/static/callfills-mark.png" alt="Callfills" class="h-5 w-5" />
+        </div>
+        <span class="font-jakarta text-lg font-extrabold tracking-tight">Callfills</span>
+        <span class="ml-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45 mt-1">Lead Intelligence</span>
+      </div>
+
+      <div class="relative max-w-md">
+        <h2 class="font-jakarta text-[40px] leading-[1.08] font-extrabold tracking-tight">Win the lead<br/>before anyone else.</h2>
+        <p class="mt-4 text-[15px] text-white/65 leading-relaxed">
+          Live buying-intent on companies — scored, deduped, and delivered the moment it appears.
+        </p>
+
+        <ul class="mt-9 space-y-4">
+          {% set features = [
+            ("Real-time intent detection", "Hiring, funding & agency-switch signals the moment they surface."),
+            ("Scored lead cards", "Every company ranked by buying intent, ready to action."),
+            ("Speed-to-lead advantage", "Reach decision-makers before your competitors even notice."),
+          ] %}
+          {% for title, desc in features %}
+          <li class="flex items-start gap-3.5">
+            <span class="mt-0.5 grid place-items-center h-6 w-6 rounded-lg bg-white/10 ring-1 ring-white/15 shrink-0">
+              <svg class="h-3.5 w-3.5 text-brandlight" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 10.5 8.5 15 16 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <div>
+              <p class="text-sm font-semibold text-white">{{ title }}</p>
+              <p class="text-[13px] text-white/55 leading-snug mt-0.5">{{ desc }}</p>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="relative flex items-center gap-2 text-xs text-white/45">
+        <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9" stroke-linecap="round"/></svg>
+        Encrypted session · © Callfills
+      </div>
+    </div>
+
+    <!-- Right: form -->
+    <div class="flex items-center justify-center px-6 py-12">
+      <div class="w-full max-w-sm cf-rise">
+        <!-- mobile brand -->
+        <div class="lg:hidden flex items-center gap-3 mb-8">
+          <div class="h-10 w-10 rounded-xl bg-brand-gradient grid place-items-center shadow-brand">
+            <img src="/static/callfills-mark.png" alt="Callfills" class="h-5 w-5" />
+          </div>
+          <span class="font-jakarta text-base font-extrabold tracking-tight"><span class="text-ink">Call</span><span class="text-brand dark:text-brandlight">fills</span></span>
+        </div>
+
+        <h1 class="font-jakarta text-[26px] font-extrabold text-ink tracking-tight">
+          {% if mode == 'signup' %}Create your account{% else %}Welcome back{% endif %}
+        </h1>
+        <p class="mt-1.5 text-sm text-muted">
+          {% if mode == 'signup' %}Start surfacing high-intent leads in minutes.{% else %}Sign in to your lead pipeline.{% endif %}
+        </p>
+
+        {% if not auth_ready %}
+        <div class="mt-5 rounded-xl bg-amber-50 text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/25 text-sm px-4 py-3">
+          Supabase Auth isn’t configured. Set <code class="font-mono text-[12px]">SUPABASE_URL</code> and a key in <code class="font-mono text-[12px]">.env</code>.
+        </div>
+        {% endif %}
+
+        {% if error %}
+        <div class="mt-5 flex items-start gap-2.5 rounded-xl bg-rose-50 text-rose-700 ring-1 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/25 text-sm px-4 py-3">
+          <svg class="h-[18px] w-[18px] shrink-0 mt-0.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="7.5"/><path d="M10 6.5v4M10 13.4h0" stroke-linecap="round"/></svg>
+          <span>{{ error }}</span>
+        </div>
+        {% endif %}
+        {% if notice %}
+        <div class="mt-5 flex items-start gap-2.5 rounded-xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/25 text-sm px-4 py-3">
+          <svg class="h-[18px] w-[18px] shrink-0 mt-0.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 10.5 8.5 15 16 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>{{ notice }}</span>
+        </div>
+        {% endif %}
+
+        {% if google_enabled %}
+        <!-- Google OAuth -->
+        <a href="/auth/google"
+           class="mt-6 w-full inline-flex items-center justify-center gap-3 rounded-lg border border-edge bg-panel hover:bg-surface px-4 py-2.5 text-sm font-semibold text-ink transition shadow-card active:scale-[0.99]">
+          <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.76h3.56c2.08-1.92 3.28-4.74 3.28-8.09Z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.76c-.99.66-2.25 1.06-3.72 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23Z"/>
+            <path fill="#FBBC05" d="M5.84 14.11a6.6 6.6 0 0 1 0-4.22V7.05H2.18a11 11 0 0 0 0 9.9l3.66-2.84Z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.05l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38Z"/>
+          </svg>
+          Continue with Google
+        </a>
+
+        <!-- divider -->
+        <div class="my-5 flex items-center gap-3">
+          <span class="h-px flex-1 bg-edge"></span>
+          <span class="text-[11px] font-medium uppercase tracking-[0.1em] text-muted">or with email</span>
+          <span class="h-px flex-1 bg-edge"></span>
+        </div>
+        {% endif %}
+
+        <form method="post" action="{% if mode == 'signup' %}/signup{% else %}/login{% endif %}" class="{% if not google_enabled %}mt-6 {% endif %}space-y-4">
+          <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">Email</label>
+            <input type="email" name="email" value="{{ email }}" required autofocus autocomplete="email"
+                   placeholder="you@company.com"
+                   class="w-full rounded-lg bg-panel border border-edge px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand transition" />
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">Password</label>
+            <input type="password" name="password" required minlength="6"
+                   autocomplete="{% if mode == 'signup' %}new-password{% else %}current-password{% endif %}"
+                   placeholder="••••••••"
+                   class="w-full rounded-lg bg-panel border border-edge px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand transition" />
+          </div>
+          <button type="submit"
+                  class="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-brand-gradient hover:opacity-95 text-white text-sm font-semibold px-4 py-2.5 shadow-brand transition active:scale-[0.99]">
+            {% if mode == 'signup' %}Create account{% else %}Sign in{% endif %}
+          </button>
+        </form>
+
+        {% if allow_signup %}
+        <p class="mt-6 text-center text-sm text-muted">
+          {% if mode == 'signup' %}
+            Already have an account? <a href="/login" class="font-semibold text-brand dark:text-brandlight hover:underline">Sign in</a>
+          {% else %}
+            New to Callfills? <a href="/signup" class="font-semibold text-brand dark:text-brandlight hover:underline">Create an account</a>
+          {% endif %}
+        </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</body>
+</html>

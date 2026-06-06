@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}CALLFILLS{% endblock %}</title>
+  <link rel="icon" type="image/png" href="/static/favicon.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+            jakarta: ['"Plus Jakarta Sans"', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+          },
+          colors: {
+            /* semantic tokens — driven by CSS vars so they flip in dark mode */
+            canvas:  "rgb(var(--c-canvas) / <alpha-value>)",   /* page background  */
+            panel:   "rgb(var(--c-panel) / <alpha-value>)",    /* cards / surfaces */
+            surface: "rgb(var(--c-surface) / <alpha-value>)",  /* subtle surfaces  */
+            edge:    "rgb(var(--c-edge) / <alpha-value>)",     /* hairline borders */
+            ink:     "rgb(var(--c-ink) / <alpha-value>)",      /* headings         */
+            muted:   "rgb(var(--c-muted) / <alpha-value>)",    /* secondary text   */
+            /* brand stays constant in both themes */
+            brand:      "#9a28ff",
+            brandmed:   "#7a4aff",
+            brandlight: "#ca7fff",
+          },
+          boxShadow: {
+            card:   "0 1px 2px 0 rgba(13,15,23,0.04), 0 1px 3px 0 rgba(13,15,23,0.05)",
+            lift:   "0 16px 40px -16px rgba(13,15,23,0.22), 0 2px 8px -3px rgba(13,15,23,0.06)",
+            drawer: "-20px 0 60px -24px rgba(8,9,14,0.40)",
+            brand:  "0 8px 22px -8px rgba(154,40,255,0.45)",
+          },
+          backgroundImage: {
+            'brand-gradient': "linear-gradient(135deg, #9a28ff 0%, #7a4aff 100%)",
+          },
+          keyframes: {
+            rise: { '0%': { opacity: 0, transform: 'translateY(8px)' }, '100%': { opacity: 1, transform: 'translateY(0)' } },
+          },
+          animation: { rise: 'rise .45s cubic-bezier(.21,.6,.35,1) both' },
+        },
+      },
+    };
+  </script>
+  <script>
+    /* Apply saved theme before paint to avoid a flash. Light is the default. */
+    (function () {
+      try { if (localStorage.getItem('cf-theme') === 'dark') document.documentElement.classList.add('dark'); } catch (e) {}
+    })();
+    function cfToggleTheme() {
+      var dark = document.documentElement.classList.toggle('dark');
+      try { localStorage.setItem('cf-theme', dark ? 'dark' : 'light'); } catch (e) {}
+    }
+  </script>
+  <style>
+    :root {
+      --c-canvas:  248 249 251;   /* #f8f9fb  app background  */
+      --c-panel:   255 255 255;   /* #ffffff  cards          */
+      --c-surface: 243 244 248;   /* #f3f4f8  subtle fills    */
+      --c-edge:    228 230 238;   /* #e4e6ee  hairlines       */
+      --c-ink:      16  18  27;   /* #10121b  headings        */
+      --c-muted:   100 106 124;   /* #646a7c  secondary text  */
+    }
+    html.dark {
+      --c-canvas:    9  10  14;   /* #090a0e  near-black neutral */
+      --c-panel:    19  21  29;   /* #13151d */
+      --c-surface:  28  31  41;   /* #1c1f29 */
+      --c-edge:     38  42  54;   /* #262a36 */
+      --c-ink:     244 245 250;   /* #f4f5fa */
+      --c-muted:   148 154 172;   /* #949aac */
+    }
+    body { background-color: rgb(var(--c-canvas)); font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    /* faint dotted texture on the canvas for depth (very subtle) */
+    .cf-grid::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image: radial-gradient(rgb(var(--c-ink) / 0.035) 1px, transparent 1px);
+      background-size: 22px 22px; mask-image: linear-gradient(180deg, #000, transparent 70%);
+    }
+    .scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+    .scroll-thin::-webkit-scrollbar-thumb { background: rgb(var(--c-edge)); border-radius: 8px; }
+    .scroll-thin::-webkit-scrollbar-thumb:hover { background: rgb(var(--c-muted) / 0.5); }
+    .scroll-thin::-webkit-scrollbar-track { background: transparent; }
+    .nav-link { position: relative; transition: color .15s, background-color .15s; }
+    .nav-link[aria-current="page"] { color: #9a28ff; background: rgb(154 40 255 / 0.08); font-weight: 600; }
+    html.dark .nav-link[aria-current="page"] { color: #ca7fff; background: rgb(154 40 255 / 0.16); }
+    .nav-link[aria-current="page"]::before {
+      content: ""; position: absolute; left: -12px; top: 50%; transform: translateY(-50%);
+      height: 16px; width: 3px; border-radius: 0 3px 3px 0; background: #9a28ff;
+    }
+  </style>
+</head>
+<body class="h-full text-slate-600 dark:text-slate-300 antialiased cf-grid">
+  <div class="relative z-10 min-h-full flex">
+
+    <!-- ───────────────────────── Sidebar ───────────────────────── -->
+    <aside class="hidden lg:flex w-[248px] shrink-0 flex-col border-r border-edge bg-panel sticky top-0 h-screen">
+      <!-- Brand -->
+      <div class="px-5 h-16 flex items-center gap-3 border-b border-edge">
+        <div class="h-9 w-9 rounded-xl bg-brand-gradient grid place-items-center shadow-brand shrink-0">
+          <img src="/static/callfills-mark.png" alt="CALLFILLS" class="h-[18px] w-[18px]" />
+        </div>
+        <div class="leading-none">
+          <h1 class="font-jakarta text-[15px] font-extrabold tracking-tight"><span class="text-ink">Call</span><span class="text-brand dark:text-brandlight">fills</span></h1>
+          <p class="text-[10.5px] text-muted font-medium mt-1 tracking-wide">LEAD INTELLIGENCE</p>
+        </div>
+      </div>
+
+      <!-- Search -->
+      <div class="px-4 pt-4">
+        <button type="button"
+                class="group w-full flex items-center gap-2.5 rounded-lg bg-canvas border border-edge px-3 py-2 text-sm text-muted hover:border-brand/40 hover:text-slate-600 dark:hover:text-slate-300 transition">
+          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="9" r="6"/><path d="m18 18-3.5-3.5" stroke-linecap="round"/></svg>
+          <span class="flex-1 text-left">Search</span>
+          <kbd class="rounded border border-edge bg-panel px-1.5 py-0.5 text-[10px] font-medium text-muted">⌘K</kbd>
+        </button>
+      </div>
+
+      {% if tenant %}
+      <!-- Active workspace -->
+      <div class="px-4 pt-3">
+        <div class="flex items-center gap-2.5 rounded-lg bg-surface border border-edge px-3 py-2">
+          <span class="grid place-items-center h-7 w-7 rounded-md bg-brand/10 text-brand dark:text-brandlight shrink-0">
+            <svg class="h-[15px] w-[15px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="6" width="14" height="10" rx="2"/><path d="M7 6V4.5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 13 4.5V6" stroke-linecap="round"/></svg>
+          </span>
+          <div class="min-w-0">
+            <p class="text-[9px] uppercase tracking-wider text-muted">Workspace</p>
+            <p class="text-xs font-semibold text-ink truncate">{{ tenant.client_name or 'All leads' }}</p>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Nav -->
+      <nav class="flex-1 overflow-y-auto scroll-thin px-4 py-4 space-y-6">
+        <div class="space-y-0.5">
+          <p class="px-2 mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted/80">Overview</p>
+          <a href="/" {% if request.url.path == '/' %}aria-current="page"{% endif %} class="nav-link flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-surface">
+            <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 10.5 10 4l7 6.5M5 9.5V16h10V9.5" stroke-linejoin="round" stroke-linecap="round"/></svg>
+            Dashboard
+          </a>
+          <a href="/dashboard/leads-view" {% if request.url.path.startswith('/dashboard/leads-view') %}aria-current="page"{% endif %} class="nav-link flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-surface">
+            <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M3 8h14M7 12h6" stroke-linecap="round"/></svg>
+            Leads
+          </a>
+          <a href="/dashboard/signals" {% if request.url.path.startswith('/dashboard/signals') %}aria-current="page"{% endif %} class="nav-link flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-surface">
+            <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 14l4-5 3 3 4-6 3 4" stroke-linejoin="round" stroke-linecap="round"/></svg>
+            Signals
+          </a>
+          <a href="/dashboard/companies" {% if request.url.path.startswith('/dashboard/companies') %}aria-current="page"{% endif %} class="nav-link flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-surface">
+            <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 16V7l5-3 5 3v9M4 16h12M8 16v-3h4v3" stroke-linejoin="round" stroke-linecap="round"/></svg>
+            Companies
+          </a>
+        </div>
+
+        <div class="space-y-0.5">
+          <p class="px-2 mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted/80">Insights</p>
+          <a href="/dashboard/analytics" {% if request.url.path.startswith('/dashboard/analytics') %}aria-current="page"{% endif %} class="nav-link flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-surface">
+            <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 4v12h12M7 12l3-3 2 2 3-4" stroke-linejoin="round" stroke-linecap="round"/></svg>
+            Analytics
+          </a>
+          <a href="/dashboard/export" {% if request.url.path.startswith('/dashboard/export') %}aria-current="page"{% endif %} class="nav-link flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-surface">
+            <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 3v9m0 0 3-3m-3 3-3-3M4 14v2h12v-2" stroke-linejoin="round" stroke-linecap="round"/></svg>
+            Export CSV
+          </a>
+        </div>
+
+        {% if not tenant or tenant.is_operator %}
+        <div class="space-y-0.5">
+          <p class="px-2 mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted/80">Operator</p>
+          <a href="/pipelines" {% if request.url.path.startswith('/pipelines') %}aria-current="page"{% endif %} class="nav-link flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-surface">
+            <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5h12M6 10h8M9 15h2" stroke-linecap="round"/></svg>
+            Pipelines
+          </a>
+        </div>
+        {% endif %}
+
+        <div class="space-y-0.5">
+          <p class="px-2 mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted/80">Coming soon</p>
+          <div class="flex items-center justify-between rounded-lg px-2.5 py-2 text-sm text-muted/50 cursor-default select-none" title="Coming soon — needs Apollo/Smartlead">
+            <span class="flex items-center gap-3">
+              <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2.5 2"><rect x="3" y="5" width="14" height="10" rx="2"/></svg>
+              Outreach
+            </span>
+            <span class="rounded bg-surface text-muted text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5">soon</span>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Footer: live status + secondary links + account -->
+      <div class="border-t border-edge px-4 py-3 space-y-2">
+        {% if stats and stats.generated_at %}
+        <div class="flex items-center gap-2.5 rounded-lg bg-surface px-3 py-2">
+          <span class="relative flex h-2 w-2 shrink-0">
+            <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"></span>
+            <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+          </span>
+          <div class="min-w-0 leading-tight">
+            <p class="text-[11px] font-semibold text-ink">Pipeline live</p>
+            <p class="text-[10.5px] text-muted truncate">Synced {{ stats.generated_at[:16].replace('T',' ') }} UTC</p>
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="flex items-center gap-1">
+          <a href="/" class="flex-1 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted hover:bg-surface hover:text-slate-700 dark:hover:text-slate-200 transition">
+            <svg class="h-[17px] w-[17px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="6.5"/><path d="M8.2 8a1.8 1.8 0 1 1 2.6 1.6c-.6.3-.8.6-.8 1.2M10 13.2h0" stroke-linecap="round"/></svg>
+            Help
+          </a>
+          <a href="/" class="flex-1 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted hover:bg-surface hover:text-slate-700 dark:hover:text-slate-200 transition">
+            <svg class="h-[17px] w-[17px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Settings
+          </a>
+        </div>
+
+        {% if user %}
+        <!-- Signed-in user + logout -->
+        <div class="flex items-center gap-2.5 rounded-lg border border-edge bg-surface px-2.5 py-2">
+          <span class="grid place-items-center h-8 w-8 rounded-full bg-brand-gradient text-white text-xs font-bold shrink-0">
+            {{ (user.name or user.email or '?')[:1] | upper }}
+          </span>
+          <div class="min-w-0 flex-1">
+            <p class="text-xs font-semibold text-ink truncate">{{ user.name or (user.email.split('@')[0] if user.email else 'Account') }}</p>
+            <p class="text-[11px] text-muted truncate">{{ user.email or '' }}</p>
+          </div>
+          <a href="/logout" title="Sign out"
+             class="h-7 w-7 grid place-items-center rounded-md text-muted hover:text-brand dark:hover:text-brandlight hover:bg-panel transition shrink-0">
+            <svg class="h-[16px] w-[16px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 17H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4M13 14l4-4-4-4M17 10H8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </aside>
+
+    <!-- ───────────────────────── Main ───────────────────────── -->
+    <div class="flex-1 min-w-0 flex flex-col">
+      <!-- Top bar -->
+      <header class="sticky top-0 z-20 border-b border-edge bg-panel/80 backdrop-blur-xl">
+        <div class="px-5 lg:px-8 h-16 flex items-center justify-between gap-4">
+          <div class="flex items-center gap-3 min-w-0">
+            <!-- Mobile brand mark -->
+            <div class="lg:hidden h-9 w-9 rounded-lg bg-brand-gradient grid place-items-center shadow-brand shrink-0">
+              <img src="/static/callfills-mark.png" alt="CALLFILLS" class="h-4 w-4" />
+            </div>
+            <div class="min-w-0">
+              <h2 class="text-[15px] lg:text-[17px] font-bold tracking-tight text-ink truncate leading-tight">{% block page_title %}Dashboard{% endblock %}</h2>
+              <p class="hidden sm:block text-xs text-muted truncate mt-0.5">{% block page_subtitle %}Live signal intelligence on India-based companies{% endblock %}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2.5 shrink-0">
+            <!-- Theme toggle -->
+            <button type="button" onclick="cfToggleTheme()" aria-label="Toggle theme"
+                    class="h-9 w-9 grid place-items-center rounded-lg border border-edge bg-panel text-muted hover:text-brand dark:hover:text-brandlight hover:border-brand/40 transition">
+              <svg class="h-[18px] w-[18px] dark:hidden" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M16 11.5A6.5 6.5 0 0 1 8.5 4a6.5 6.5 0 1 0 7.5 7.5Z" stroke-linejoin="round" stroke-linecap="round"/></svg>
+              <svg class="h-[18px] w-[18px] hidden dark:block" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="3.2"/><path d="M10 2.5v1.8M10 15.7v1.8M2.5 10h1.8M15.7 10h1.8M4.6 4.6l1.3 1.3M14.1 14.1l1.3 1.3M15.4 4.6l-1.3 1.3M5.9 14.1l-1.3 1.3" stroke-linecap="round"/></svg>
+            </button>
+            {% block header_actions %}{% endblock %}
+          </div>
+        </div>
+      </header>
+
+      <main class="flex-1 px-5 lg:px-8 py-6 lg:py-8 w-full">
+        <div class="max-w-[1320px] mx-auto">{% block content %}{% endblock %}</div>
+      </main>
+    </div>
+  </div>
+
+  <div id="toast" class="fixed bottom-6 right-6 z-50"></div>
+</body>
+</html>

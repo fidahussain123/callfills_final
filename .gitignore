@@ -1,0 +1,27 @@
+# Secrets / credentials — never commit.
+# NOTE: .env.example is also ignored because it currently contains a REAL key —
+# rotate it and re-add a placeholder-only template if you want it in the repo.
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Scraped output / run artifacts (keep the seed raw sample tracked)
+data/run_*.json
+data/latest.json
+data/leads.json
+data/companies.json
+data/signals.json
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

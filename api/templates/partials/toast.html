@@ -1,0 +1,16 @@
+<div class="rounded-xl bg-panel border border-edge shadow-lift px-4 py-3 text-sm text-slate-700 dark:text-slate-200 flex items-center gap-3"
+     style="animation: cfToastIn .3s cubic-bezier(.21,.6,.35,1) both;">
+  <span class="grid place-items-center h-6 w-6 rounded-full bg-brand/10 shrink-0">
+    <span class="h-2 w-2 rounded-full bg-brand animate-pulse"></span>
+  </span>
+  <span class="flex-1">{{ message }}</span>
+  <button class="text-muted hover:text-ink transition" onclick="this.closest('div').remove()">×</button>
+</div>
+<style>@keyframes cfToastIn { from { transform: translateY(12px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }</style>
+<script>
+  // Auto-dismiss toast after 6s.
+  setTimeout(function () {
+    var t = document.getElementById('toast');
+    if (t) t.innerHTML = '';
+  }, 6000);
+</script>

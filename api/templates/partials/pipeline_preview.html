@@ -1,0 +1,31 @@
+<div class="rounded-lg border border-edge bg-canvas p-3.5">
+  <div class="flex items-center gap-2">
+    {% if leads %}
+    <span class="grid place-items-center h-6 w-6 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300 shrink-0">
+      <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 10.5 8.5 15 16 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </span>
+    <p class="text-sm text-ink"><span class="font-bold">{{ leads|length }}</span> leads match this ICP
+      <span class="text-muted">· of {{ pool_size }} in pool ({{ vertical }} ≥ {{ min_score }})</span></p>
+    {% else %}
+    <span class="grid place-items-center h-6 w-6 rounded-full bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300 shrink-0">
+      <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 6.5v4M10 13.4h0" stroke-linecap="round"/></svg>
+    </span>
+    <p class="text-sm text-ink font-medium">0 leads match this ICP</p>
+    {% endif %}
+  </div>
+
+  {% if leads %}
+  <ul class="mt-2.5 space-y-1.5 max-h-52 overflow-y-auto scroll-thin">
+    {% for l in leads[:12] %}
+    <li class="flex items-center justify-between gap-3 text-xs">
+      <span class="text-ink font-medium truncate">{{ l.company_name }}</span>
+      <span class="text-muted whitespace-nowrap">{{ l.score }} · {{ (l.summary or '')[:34] }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if leads|length > 12 %}<p class="text-[11px] text-muted mt-1.5">+{{ leads|length - 12 }} more</p>{% endif %}
+  <p class="mt-2.5 text-[11px] text-emerald-700 dark:text-emerald-400">✓ Fetch looks right — create it, then assign a client.</p>
+  {% else %}
+  <p class="mt-1.5 text-xs text-muted">Nothing matched. Lower the min score (pool tops out at 50 right now) or relax the filters, then preview again.</p>
+  {% endif %}
+</div>

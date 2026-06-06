@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}CALLFILLS · Lead Intelligence{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}Win the lead before anyone else — live intent on India-based companies.{% endblock %}
+
+{% block header_actions %}
+<div class="flex items-center gap-2">
+  {# Everyone can fetch (re-pull their feed — free, no scrape) #}
+  <button type="button" hx-get="/dashboard/leads" hx-target="#lead-table" hx-swap="innerHTML"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-edge bg-panel hover:bg-surface text-ink text-sm font-semibold px-3.5 py-2 shadow-sm transition">
+    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4.5v3h-3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Fetch
+  </button>
+
+  {# Everyone can run a scrape. Operators pick the vertical; clients are locked to their pipeline's. #}
+  <form hx-post="/dashboard/run" hx-target="#toast" hx-swap="innerHTML" class="flex items-center gap-2">
+    {% if tenant and tenant.is_operator %}
+    <select name="vertical"
+            class="hidden sm:block rounded-lg bg-panel border border-edge text-sm px-3 py-2 text-slate-700 dark:text-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand capitalize">
+      {% for v in verticals %}
+        <option value="{{ v }}" {% if v == 'recruitment' %}selected{% endif %}>{{ v }}</option>
+      {% endfor %}
+    </select>
+    {% else %}
+    <input type="hidden" name="vertical" value="{{ tenant.client.vertical if tenant and tenant.client else 'recruitment' }}" />
+    {% endif %}
+    <button type="submit"
+            class="inline-flex items-center gap-1.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white text-sm font-semibold px-4 py-2 shadow-brand transition active:scale-[0.98]">
+      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 4.2a1 1 0 0 0-1.5.86v9.88a1 1 0 0 0 1.5.86l8.5-4.94a1 1 0 0 0 0-1.72L6.3 4.2Z"/></svg>
+      Run pipeline
+    </button>
+  </form>
+</div>
+{% endblock %}
+
+{% block content %}
+{% set counts = stats.counts or {} %}
+{% set s = stats.stats or {} %}
+{% set total_leads = counts.get('leads', 0) %}
+{% set qualified = s.get('leads_meeting_threshold', 0) %}
+{% set companies = counts.get('companies', 0) %}
+{% set signals = counts.get('signals', 0) %}
+{% set qualified_pct = ((qualified / total_leads * 100) | round(0, 'common') | int) if total_leads else 0 %}
+{% set avg_signals = ((signals / companies) | round(1)) if companies else 0 %}
+
+{% if tenant and tenant.needs_workspace %}
+<div class="mb-6 flex items-start gap-2.5 rounded-xl bg-amber-50 text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/25 text-sm px-4 py-3">
+  <svg class="h-[18px] w-[18px] shrink-0 mt-0.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="7.5"/><path d="M10 6.5v4M10 13.4h0" stroke-linecap="round"/></svg>
+  <span>No workspace assigned yet — an operator needs to add you to a client. You’ll see your scoped leads here once assigned.</span>
+</div>
+{% endif %}
+
+<!-- Stat cards -->
+<section class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+  <!-- Total leads -->
+  <div class="animate-rise rounded-2xl bg-panel border border-edge p-5 shadow-card" style="animation-delay:0ms">
+    <div class="flex items-center justify-between">
+      <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Total Leads</span>
+      <span class="grid place-items-center h-8 w-8 rounded-lg bg-brand/10 text-brand dark:text-brandlight">
+        <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M3 8h14M7 12h6" stroke-linecap="round"/></svg>
+      </span>
+    </div>
+    <p class="mt-4 text-[28px] font-extrabold text-ink tabular-nums leading-none">{{ total_leads }}</p>
+    <p class="mt-2 text-xs text-muted">{{ companies }} companies scanned</p>
+  </div>
+
+  <!-- Qualified -->
+  <div class="animate-rise rounded-2xl bg-panel border border-edge p-5 shadow-card" style="animation-delay:60ms">
+    <div class="flex items-center justify-between">
+      <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Qualified</span>
+      <span class="grid place-items-center h-8 w-8 rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300">
+        <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 10.5 8.5 15 16 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+    </div>
+    <p class="mt-4 text-[28px] font-extrabold text-ink tabular-nums leading-none">{{ qualified }}</p>
+    <div class="mt-2.5 flex items-center gap-2">
+      <div class="flex-1 h-1.5 rounded-full bg-surface overflow-hidden">
+        <div class="h-full rounded-full bg-emerald-500" style="width: {{ qualified_pct }}%"></div>
+      </div>
+      <span class="text-[11px] font-semibold text-muted tabular-nums shrink-0">{{ qualified_pct }}%</span>
+    </div>
+  </div>
+
+  <!-- Companies -->
+  <div class="animate-rise rounded-2xl bg-panel border border-edge p-5 shadow-card" style="animation-delay:120ms">
+    <div class="flex items-center justify-between">
+      <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Companies</span>
+      <span class="grid place-items-center h-8 w-8 rounded-lg bg-brandmed/10 text-brandmed dark:text-brandlight">
+        <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 16V7l5-3 5 3v9M4 16h12" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+    </div>
+    <p class="mt-4 text-[28px] font-extrabold text-ink tabular-nums leading-none">{{ companies }}</p>
+    <p class="mt-2 text-xs text-muted">{{ avg_signals }} signals each on average</p>
+  </div>
+
+  <!-- Signals -->
+  <div class="animate-rise rounded-2xl bg-panel border border-edge p-5 shadow-card" style="animation-delay:180ms">
+    <div class="flex items-center justify-between">
+      <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Signals</span>
+      <span class="grid place-items-center h-8 w-8 rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
+        <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 14l4-5 3 3 4-6 3 4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+    </div>
+    <p class="mt-4 text-[28px] font-extrabold text-ink tabular-nums leading-none">{{ signals }}</p>
+    <p class="mt-2 text-xs text-muted">across {{ sources|length }} source{{ '' if sources|length == 1 else 's' }}</p>
+  </div>
+</section>
+
+<!-- Section header -->
+<div class="flex items-end justify-between mb-4">
+  <div>
+    <h3 class="text-[15px] font-bold text-ink tracking-tight">{% if tenant and not tenant.is_operator %}{{ tenant.client_name }} · Leads{% else %}All Leads{% endif %}</h3>
+    <p class="text-xs text-muted mt-0.5">
+      {% if stats.generated_at %}Last run {{ stats.generated_at[:19].replace('T',' ') }} UTC{% else %}No pipeline run yet{% endif %}{% if tenant and tenant.is_operator %} · the shared pool across all pipelines{% endif %}
+    </p>
+  </div>
+</div>
+
+<!-- Filter bar -->
+<form class="rounded-xl bg-panel border border-edge p-3 mb-4 flex flex-col md:flex-row md:flex-wrap md:items-center gap-2.5 shadow-card"
+      hx-get="/dashboard/leads" hx-target="#lead-table" hx-swap="innerHTML"
+      hx-trigger="submit, change, keyup delay:350ms from:input[name='q']">
+  <div class="relative flex-1 min-w-[200px]">
+    <svg class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="9" r="6"/><path d="m18 18-3.5-3.5" stroke-linecap="round"/></svg>
+    <input type="text" name="q" placeholder="Search company or website…"
+           class="w-full rounded-lg bg-canvas border border-edge pl-9 pr-3 py-2 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
+  </div>
+  <select name="source" class="w-full md:w-40 rounded-lg bg-canvas border border-edge px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand">
+    <option value="">All sources</option>
+    {% for src in sources %}<option value="{{ src }}">{{ src }}</option>{% endfor %}
+  </select>
+  <select name="funding" class="w-full md:w-36 rounded-lg bg-canvas border border-edge px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand">
+    <option value="any">Funding: any</option>
+    <option value="yes">Funded</option>
+    <option value="no">Not funded</option>
+  </select>
+  <select name="hiring" class="w-full md:w-36 rounded-lg bg-canvas border border-edge px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand">
+    <option value="any">Hiring: any</option>
+    <option value="yes">Hiring</option>
+    <option value="no">Not hiring</option>
+  </select>
+  <input type="number" name="min_score" min="0" max="100" placeholder="Min score"
+         class="w-full md:w-28 rounded-lg bg-canvas border border-edge px-3 py-2 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
+  <label class="flex items-center gap-2 text-xs font-medium text-muted whitespace-nowrap md:pl-1 cursor-pointer select-none">
+    <input type="checkbox" name="threshold" value="yes" class="h-4 w-4 rounded border-edge accent-brand" /> Qualified only
+  </label>
+</form>
+
+<!-- Lead table -->
+<div class="rounded-xl bg-panel border border-edge overflow-hidden shadow-card">
+  <div id="lead-table" class="scroll-thin overflow-x-auto">
+    {% include "partials/lead_table.html" %}
+  </div>
+</div>
+
+<!-- Detail drawer -->
+<div id="drawer"></div>
+{% endblock %}

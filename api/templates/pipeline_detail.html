@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}{{ client.name }} · Pipeline · CALLFILLS{% endblock %}
+{% block page_title %}{{ client.name }}{% endblock %}
+{% block page_subtitle %}Pipeline · {{ client.vertical.replace('_',' ') }} · the leads below are this pipeline’s scoped slice of the pool.{% endblock %}
+
+{% block header_actions %}
+<form hx-post="/dashboard/run" hx-target="#toast" hx-swap="innerHTML">
+  <input type="hidden" name="vertical" value="{{ client.vertical }}" />
+  <button type="submit"
+          class="inline-flex items-center gap-1.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white text-sm font-semibold px-4 py-2 shadow-brand transition active:scale-[0.98]">
+    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 4.2a1 1 0 0 0-1.5.86v9.88a1 1 0 0 0 1.5.86l8.5-4.94a1 1 0 0 0 0-1.72L6.3 4.2Z"/></svg>
+    Run scrape
+  </button>
+</form>
+{% endblock %}
+
+{% block content %}
+<a href="/pipelines" class="inline-flex items-center gap-1.5 text-sm text-muted hover:text-brand dark:hover:text-brandlight transition mb-4">
+  <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 5-5 5 5 5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  All pipelines
+</a>
+
+{% if notice %}
+<div class="mb-6 flex items-start gap-2.5 rounded-xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/25 text-sm px-4 py-3">
+  <svg class="h-[18px] w-[18px] shrink-0 mt-0.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 10.5 8.5 15 16 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <span>{{ notice }}</span>
+</div>
+{% endif %}
+{% if error %}
+<div class="mb-6 flex items-start gap-2.5 rounded-xl bg-rose-50 text-rose-700 ring-1 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/25 text-sm px-4 py-3">
+  <svg class="h-[18px] w-[18px] shrink-0 mt-0.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="7.5"/><path d="M10 6.5v4M10 13.4h0" stroke-linecap="round"/></svg>
+  <span>{{ error }}</span>
+</div>
+{% endif %}
+
+<!-- Stat strip -->
+{% set f = client.filters or {} %}
+<section class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+  <div class="rounded-2xl bg-panel border border-edge p-4 shadow-card">
+    <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Leads in feed</p>
+    <p class="mt-2 text-[26px] font-extrabold text-ink tabular-nums leading-none">{{ leads|length }}</p>
+  </div>
+  <div class="rounded-2xl bg-panel border border-edge p-4 shadow-card">
+    <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Vertical</p>
+    <p class="mt-2 text-base font-bold text-ink capitalize leading-tight">{{ client.vertical.replace('_',' ') }}</p>
+  </div>
+  <div class="rounded-2xl bg-panel border border-edge p-4 shadow-card">
+    <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Min score</p>
+    <p class="mt-2 text-[26px] font-extrabold text-ink tabular-nums leading-none">{{ client.min_score }}</p>
+  </div>
+  <div class="rounded-2xl bg-panel border border-edge p-4 shadow-card">
+    <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Assigned</p>
+    <p class="mt-2 text-[26px] font-extrabold text-ink tabular-nums leading-none">{{ members|length }}</p>
+  </div>
+</section>
+
+<div class="grid lg:grid-cols-3 gap-5">
+  <!-- Left: targeting + members -->
+  <div class="lg:col-span-1 space-y-5">
+    <!-- Targeting -->
+    <div class="rounded-2xl bg-panel border border-edge p-5 shadow-card">
+      <h3 class="text-[13px] font-bold text-ink tracking-tight mb-3">Targeting (ICP)</h3>
+      {% if f.description %}<p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-4 pb-4 border-b border-edge">{{ f.description }}</p>{% endif %}
+      <dl class="space-y-3 text-sm">
+        <div class="flex justify-between gap-3">
+          <dt class="text-muted">Vertical</dt><dd class="text-ink font-medium capitalize">{{ client.vertical.replace('_',' ') }}</dd>
+        </div>
+        <div class="flex justify-between gap-3">
+          <dt class="text-muted">Min score</dt><dd class="text-ink font-medium tabular-nums">{{ client.min_score }}</dd>
+        </div>
+        <div>
+          <dt class="text-muted mb-1.5">Industries</dt>
+          <dd class="flex flex-wrap gap-1">{% for k in (f.industries or []) %}<span class="rounded-md bg-brand/10 text-brand dark:text-brandlight ring-1 ring-brand/15 text-[11px] px-2 py-0.5">{{ k }}</span>{% else %}<span class="text-[12px] text-muted">any</span>{% endfor %}</dd>
+        </div>
+        <div>
+          <dt class="text-muted mb-1.5">Cities</dt>
+          <dd class="flex flex-wrap gap-1">{% for k in (f.cities or []) %}<span class="rounded-md bg-surface text-muted ring-1 ring-edge text-[11px] px-2 py-0.5">{{ k }}</span>{% else %}<span class="text-[12px] text-muted">any</span>{% endfor %}</dd>
+        </div>
+        <div>
+          <dt class="text-muted mb-1.5">Keywords</dt>
+          <dd class="flex flex-wrap gap-1">{% for k in (f.keywords or []) %}<span class="rounded-md bg-surface text-muted ring-1 ring-edge text-[11px] px-2 py-0.5">“{{ k }}”</span>{% else %}<span class="text-[12px] text-muted">any</span>{% endfor %}</dd>
+        </div>
+        <div class="flex justify-between gap-3">
+          <dt class="text-muted">Company size</dt>
+          <dd class="text-ink font-medium tabular-nums">{% if f.employee_min or f.employee_max %}{{ f.employee_min or 0 }}–{{ f.employee_max or '∞' }} emp{% else %}any{% endif %}</dd>
+        </div>
+        <div>
+          <dt class="text-muted mb-1.5">Signal focus</dt>
+          <dd class="flex flex-wrap gap-1">{% for t in (f.signal_types or []) %}<span class="rounded-md bg-brandlight/15 text-brandmed dark:text-brandlight ring-1 ring-brandlight/30 text-[11px] px-2 py-0.5">{{ t.replace('_',' ') }}</span>{% else %}<span class="text-[12px] text-muted">any</span>{% endfor %}</dd>
+        </div>
+      </dl>
+    </div>
+
+    <!-- Assigned users -->
+    <div class="rounded-2xl bg-panel border border-edge p-5 shadow-card">
+      <h3 class="text-[13px] font-bold text-ink tracking-tight mb-3">Assigned users</h3>
+      {% if members %}
+      <ul class="space-y-2 mb-4">
+        {% for m in members %}
+        <li class="flex items-center gap-2.5">
+          <span class="grid place-items-center h-7 w-7 rounded-full bg-brand/10 text-brand dark:text-brandlight text-xs font-bold shrink-0">{{ (m.full_name or m.email or '?')[:1] | upper }}</span>
+          <div class="min-w-0">
+            <p class="text-xs font-semibold text-ink truncate">{{ m.full_name or (m.email.split('@')[0] if m.email else 'User') }}</p>
+            <p class="text-[11px] text-muted truncate">{{ m.email }}</p>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="text-xs text-muted mb-4">No users assigned yet.</p>
+      {% endif %}
+      <form method="post" action="/pipelines/{{ client.id }}/assign" class="space-y-2">
+        <input type="email" name="email" required placeholder="user@agency.com"
+               class="w-full rounded-lg bg-canvas border border-edge px-3 py-2 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
+        <button type="submit" class="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-edge bg-panel hover:bg-surface text-ink text-sm font-semibold px-3 py-2 transition">
+          Assign user
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Right: this pipeline's leads -->
+  <div class="lg:col-span-2">
+    <div class="rounded-xl bg-panel border border-edge overflow-hidden shadow-card">
+      <div class="px-5 py-3 border-b border-edge flex items-center justify-between">
+        <h3 class="text-[15px] font-bold text-ink tracking-tight">Leads in this pipeline</h3>
+        <span class="text-xs text-muted">{% if stats.generated_at %}pool synced {{ stats.generated_at[:10] }}{% endif %}</span>
+      </div>
+      <div class="scroll-thin overflow-x-auto">
+        {% include "partials/lead_table.html" %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="drawer"></div>
+{% endblock %}

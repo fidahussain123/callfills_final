@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Leads · CALLFILLS{% endblock %}
+{% block page_title %}Leads{% endblock %}
+{% block page_subtitle %}{% if tenant and not tenant.is_operator %}{{ tenant.client_name }} — your scoped leads{% else %}Every lead in the pool — search, filter, and open any card.{% endif %}{% endblock %}
+
+{% block header_actions %}
+<button type="button" hx-get="/dashboard/leads" hx-target="#lead-table" hx-swap="innerHTML"
+        class="inline-flex items-center gap-1.5 rounded-lg border border-edge bg-panel hover:bg-surface text-ink text-sm font-semibold px-3.5 py-2 shadow-sm transition">
+  <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4.5v3h-3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  Fetch
+</button>
+{% endblock %}
+
+{% block content %}
+{% if tenant and tenant.needs_workspace %}
+<div class="mb-6 flex items-start gap-2.5 rounded-xl bg-amber-50 text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/25 text-sm px-4 py-3">
+  <svg class="h-[18px] w-[18px] shrink-0 mt-0.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="7.5"/><path d="M10 6.5v4M10 13.4h0" stroke-linecap="round"/></svg>
+  <span>No workspace assigned yet — an operator needs to add you to a pipeline.</span>
+</div>
+{% endif %}
+
+<!-- Filter bar -->
+<form class="rounded-xl bg-panel border border-edge p-3 mb-4 flex flex-col md:flex-row md:flex-wrap md:items-center gap-2.5 shadow-card"
+      hx-get="/dashboard/leads" hx-target="#lead-table" hx-swap="innerHTML"
+      hx-trigger="submit, change, keyup delay:350ms from:input[name='q']">
+  <div class="relative flex-1 min-w-[200px]">
+    <svg class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="9" r="6"/><path d="m18 18-3.5-3.5" stroke-linecap="round"/></svg>
+    <input type="text" name="q" placeholder="Search company or website…"
+           class="w-full rounded-lg bg-canvas border border-edge pl-9 pr-3 py-2 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
+  </div>
+  <select name="source" class="w-full md:w-40 rounded-lg bg-canvas border border-edge px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand">
+    <option value="">All sources</option>
+    {% for src in sources %}<option value="{{ src }}">{{ src }}</option>{% endfor %}
+  </select>
+  <select name="funding" class="w-full md:w-36 rounded-lg bg-canvas border border-edge px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand">
+    <option value="any">Funding: any</option>
+    <option value="yes">Funded</option>
+    <option value="no">Not funded</option>
+  </select>
+  <select name="hiring" class="w-full md:w-36 rounded-lg bg-canvas border border-edge px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand">
+    <option value="any">Hiring: any</option>
+    <option value="yes">Hiring</option>
+    <option value="no">Not hiring</option>
+  </select>
+  <input type="number" name="min_score" min="0" max="100" placeholder="Min score"
+         class="w-full md:w-28 rounded-lg bg-canvas border border-edge px-3 py-2 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
+  <label class="flex items-center gap-2 text-xs font-medium text-muted whitespace-nowrap md:pl-1 cursor-pointer select-none">
+    <input type="checkbox" name="threshold" value="yes" class="h-4 w-4 rounded border-edge accent-brand" /> Qualified only
+  </label>
+</form>
+
+<!-- Lead table -->
+<div class="rounded-xl bg-panel border border-edge overflow-hidden shadow-card">
+  <div id="lead-table" class="scroll-thin overflow-x-auto">
+    {% include "partials/lead_table.html" %}
+  </div>
+</div>
+
+<!-- Detail drawer -->
+<div id="drawer"></div>
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Signals · CALLFILLS{% endblock %}
+{% block page_title %}Signals{% endblock %}
+{% block page_subtitle %}Live buying-intent — freshest first. The moment a company posts, it surfaces at the top.{% endblock %}
+
+{% block content %}
+{% set tone = {
+  'live':  'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30',
+  'fresh': 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30',
+  'recent':'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30',
+  'ok':    'bg-surface text-muted ring-edge',
+  'stale': 'bg-surface text-muted ring-edge'
+} %}
+
+<!-- Freshness strip -->
+<section class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+  <div class="rounded-2xl bg-panel border border-edge p-4 shadow-card">
+    <div class="flex items-center gap-2">
+      <span class="relative flex h-2.5 w-2.5"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-70"></span><span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-500"></span></span>
+      <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Live · &lt;1 min</span>
+    </div>
+    <p class="mt-2 text-[26px] font-extrabold text-ink tabular-nums leading-none">{{ tiers['live'] or 0 }}</p>
+  </div>
+  <div class="rounded-2xl bg-panel border border-edge p-4 shadow-card">
+    <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-emerald-600 dark:text-emerald-400">Fresh · &lt;1 hr</span>
+    <p class="mt-2 text-[26px] font-extrabold text-ink tabular-nums leading-none">{{ tiers['fresh'] or 0 }}</p>
+  </div>
+  <div class="rounded-2xl bg-panel border border-edge p-4 shadow-card">
+    <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-amber-600 dark:text-amber-400">Recent · &lt;24 hr</span>
+    <p class="mt-2 text-[26px] font-extrabold text-ink tabular-nums leading-none">{{ tiers['recent'] or 0 }}</p>
+  </div>
+  <div class="rounded-2xl bg-panel border border-edge p-4 shadow-card">
+    <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Total signals</span>
+    <p class="mt-2 text-[26px] font-extrabold text-ink tabular-nums leading-none">{{ signals|length }}</p>
+  </div>
+</section>
+
+<p class="text-xs text-muted mb-4">
+  Signals refresh on each pipeline run. <span class="text-rose-600 dark:text-rose-400 font-medium">Live</span> = posted under a minute ago.
+  Run a scrape (or raise the cadence) to pull intent the instant it appears.
+</p>
+
+<!-- Feed (freshest first) -->
+<div class="rounded-xl bg-panel border border-edge overflow-hidden shadow-card">
+  <div class="px-5 py-3 border-b border-edge flex items-center justify-between">
+    <h3 class="text-[15px] font-bold text-ink tracking-tight">Signal feed</h3>
+    <span class="text-xs text-muted">{% if stats.generated_at %}synced {{ stats.generated_at[:16].replace('T',' ') }} UTC{% endif %}</span>
+  </div>
+  {% if not signals %}
+  <div class="px-6 py-16 text-center">
+    <p class="text-ink text-sm font-semibold">No signals yet</p>
+    <p class="text-muted text-xs mt-1">Run a scrape to pull live intent signals.</p>
+  </div>
+  {% else %}
+  <ul class="divide-y divide-edge max-h-[70vh] overflow-y-auto scroll-thin">
+    {% for s in signals %}
+    {% set meta = s.metadata or {} %}
+    <li class="flex items-start gap-3.5 px-5 py-3.5 hover:bg-brand/[0.04] transition">
+      <span class="mt-0.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 whitespace-nowrap shrink-0 {{ tone[s._tier] }}">
+        {% if s._tier == 'live' %}<span class="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse"></span>{% endif %}
+        {{ s._age }}
+      </span>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-semibold text-ink truncate">{{ s.company_name or '—' }}</span>
+          <span class="rounded-md bg-surface text-muted ring-1 ring-edge text-[11px] px-2 py-0.5">{{ (s.signal_type or '').replace('_',' ') }}</span>
+          <span class="text-[11px] text-muted">{{ s.source_platform }}</span>
+        </div>
+        {% if s.raw_text %}<p class="mt-1 text-sm text-slate-600 dark:text-slate-300 line-clamp-2">{{ s.raw_text[:180] }}</p>{% endif %}
+        <div class="mt-1 flex items-center gap-3 text-[11px] text-muted">
+          {% if meta.role_title %}<span>{{ meta.role_title }}</span>{% endif %}
+          {% if meta.location %}<span>· {{ meta.location }}</span>{% endif %}
+          {% if meta.funding_amount %}<span>· {{ meta.funding_amount }}</span>{% endif %}
+          {% if s.source_url %}<a href="{{ s.source_url }}" target="_blank" class="text-brand dark:text-brandlight hover:underline">View ↗</a>{% endif %}
+        </div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endblock %}

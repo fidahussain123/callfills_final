@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Signing you in… · Callfills</title>
+  <link rel="icon" type="image/png" href="/static/favicon.png" />
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: grid; place-items: center;
+      font-family: 'Plus Jakarta Sans', Inter, ui-sans-serif, system-ui, sans-serif;
+      background: linear-gradient(135deg, #9a28ff 0%, #7a4aff 100%);
+      color: #fff;
+    }
+    .box { text-align: center; }
+    .spinner {
+      width: 38px; height: 38px; margin: 0 auto 16px;
+      border: 3px solid rgba(255,255,255,.35); border-top-color: #fff;
+      border-radius: 50%; animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    p { font-size: 14px; opacity: .9; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="spinner"></div>
+    <p>Signing you in…</p>
+  </div>
+
+  <!-- Hidden form: JS fills it from the URL fragment, then submits to the server -->
+  <form id="cf-auth-form" method="post" action="/auth/callback" style="display:none">
+    <input type="hidden" name="access_token" id="cf-at" />
+    <input type="hidden" name="refresh_token" id="cf-rt" />
+  </form>
+
+  <script>
+    (function () {
+      function param(src, key) { return new URLSearchParams(src).get(key); }
+      var hash = window.location.hash ? window.location.hash.slice(1) : '';
+      var search = window.location.search ? window.location.search.slice(1) : '';
+
+      var accessToken = param(hash, 'access_token');
+      var refreshToken = param(hash, 'refresh_token');
+      var err = param(hash, 'error_description') || param(search, 'error_description')
+              || param(hash, 'error') || param(search, 'error');
+
+      if (accessToken) {
+        document.getElementById('cf-at').value = accessToken;
+        document.getElementById('cf-rt').value = refreshToken || '';
+        document.getElementById('cf-auth-form').submit();
+      } else {
+        window.location.replace('/login?error=' + encodeURIComponent(err || 'Google sign-in failed'));
+      }
+    })();
+  </script>
+</body>
+</html>
