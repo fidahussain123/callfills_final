@@ -1,18 +1,20 @@
-fastapi==0.111.0
-uvicorn[standard]==0.29.0
-jinja2==3.1.4
-python-multipart==0.0.9
-pyyaml==6.0.1
-apify-client==1.7.0
-supabase==2.4.0
-redis==5.0.4
-apscheduler==3.10.4
-python-dotenv==1.0.1
-pydantic==2.7.1
-httpx==0.27.0
-feedparser==6.0.11
-spacy==3.7.4
-sendgrid==6.11.0
-python-telegram-bot==21.3
-python-jose[cryptography]==3.3.0
+# Pinned to the versions that actually run the app locally (a mutually-consistent
+# set). Previously these were stale, causing an httpx/supabase conflict on deploy.
+fastapi==0.135.2
+uvicorn[standard]==0.42.0
+jinja2==3.1.6
+python-multipart==0.0.22
+pyyaml==6.0.3
+apify-client==3.0.2
+supabase==2.30.1
+redis==8.0.0
+apscheduler==3.11.2
+python-dotenv==1.2.2
+pydantic==2.12.5
+httpx==0.28.1
+feedparser==6.0.12
+spacy==3.8.13
+sendgrid==6.12.5
+python-telegram-bot==22.7
+python-jose[cryptography]==3.5.0
 passlib[bcrypt]==1.7.4
