@@ -103,19 +103,43 @@ def companies_page(request: Request, user: dict = Depends(require_user)) -> HTML
 
 @router.get("/dashboard/analytics", response_class=HTMLResponse)
 def analytics_page(request: Request, user: dict = Depends(require_user)) -> HTMLResponse:
-    """Simple analytics over the tenant's leads — counts, sources, signal mix."""
+    """Analytics over the tenant's leads — quality mix, score distribution,
+    sources, signal types, and top companies (rendered as charts)."""
     tenant = resolve_tenant(user)
     leads = scope_leads(tenant, store.get_leads(limit=300))
     total = len(leads)
     qualified = sum(1 for l in leads if (l.get("score") or 0) >= 60)
     warm = sum(1 for l in leads if 50 <= (l.get("score") or 0) < 60)
+
     src: Counter = Counter()
     typ: Counter = Counter()
+    hiring = funding = social = 0
+    score_labels = ["0–19", "20–39", "40–49", "50–59", "60–79", "80–100"]
+    score_buckets = [0, 0, 0, 0, 0, 0]
     for l in leads:
         for s in (l.get("signal_sources") or []):
             src[s] += 1
         for t in (l.get("signal_types") or []):
             typ[t] += 1
+        if l.get("has_hiring"):
+            hiring += 1
+        if l.get("has_funding"):
+            funding += 1
+        if l.get("has_social"):
+            social += 1
+        score = l.get("score") or 0
+        idx = (
+            0 if score < 20 else 1 if score < 40 else 2 if score < 50
+            else 3 if score < 60 else 4 if score < 80 else 5
+        )
+        score_buckets[idx] += 1
+
+    top = sorted(leads, key=lambda l: l.get("score") or 0, reverse=True)[:10]
+    top_leads = [
+        {"name": (l.get("company_name") or "—")[:26], "score": l.get("score") or 0}
+        for l in top
+    ]
+
     return templates.TemplateResponse(
         request,
         "analytics.html",
@@ -131,6 +155,10 @@ def analytics_page(request: Request, user: dict = Depends(require_user)) -> HTML
             "by_type": typ.most_common(),
             "max_source": max([c for _, c in src.most_common()], default=1),
             "max_type": max([c for _, c in typ.most_common()], default=1),
+            "score_labels": score_labels,
+            "score_buckets": score_buckets,
+            "signal_profile": {"Hiring": hiring, "Funding": funding, "Social": social},
+            "top_leads": top_leads,
         },
     )
 
