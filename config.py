@@ -53,6 +53,32 @@ class Settings:
         self.SENDGRID_API_KEY: str | None = _get("SENDGRID_API_KEY")
         self.TELEGRAM_BOT_TOKEN: str | None = _get("TELEGRAM_BOT_TOKEN")
 
+        # --- AI verification (Groq) ---
+        # Optional LLM gate that filters noisy free-text signals (Reddit, X,
+        # Facebook) down to REAL, on-niche buying signals — killing the
+        # "Reddit"/"AI"/meme-title junk the structural extractor can't catch.
+        # Disabled automatically when GROQ_API_KEY is unset (heuristics-only).
+        # Groq is an OpenAI-compatible inference cloud (console.groq.com). Set
+        # GROQ_MODEL to a current production id — llama-3.3-70b-versatile (default,
+        # best judgment), openai/gpt-oss-20b (fastest), or llama-3.1-8b-instant.
+        self.GROQ_API_KEY: str | None = _get("GROQ_API_KEY")
+        self.GROQ_BASE_URL: str = _get("GROQ_BASE_URL", "https://api.groq.com/openai/v1")  # type: ignore[assignment]
+        self.GROQ_MODEL: str = _get("GROQ_MODEL", "llama-3.3-70b-versatile")  # type: ignore[assignment]
+        self.AI_VERIFY_ENABLED: bool = _get("AI_VERIFY_ENABLED", "true").lower() in (  # type: ignore[union-attr]
+            "1",
+            "true",
+            "yes",
+        )
+        self.AI_VERIFY_MIN_CONFIDENCE: float = float(
+            _get("AI_VERIFY_MIN_CONFIDENCE", "0.6")  # type: ignore[arg-type]
+        )
+        # Platforms the AI gate filters; everything else bypasses it untouched.
+        self.AI_VERIFY_PLATFORMS: set[str] = {
+            p.strip().lower()
+            for p in (_get("AI_VERIFY_PLATFORMS", "reddit,twitter,facebook") or "").split(",")
+            if p.strip()
+        }
+
         # --- Infrastructure ---
         self.REDIS_URL: str = _get("REDIS_URL", "redis://localhost:6379")  # type: ignore[assignment]
 
@@ -177,6 +203,11 @@ class Settings:
     def auth_ready(self) -> bool:
         """True when Supabase Auth can be used (URL + a usable key present)."""
         return bool(self.SUPABASE_URL) and bool(self.supabase_auth_key)
+
+    @property
+    def ai_verify_ready(self) -> bool:
+        """True when the Groq AI verification gate is usable (enabled + key set)."""
+        return self.AI_VERIFY_ENABLED and bool(self.GROQ_API_KEY)
 
 
 @lru_cache(maxsize=1)

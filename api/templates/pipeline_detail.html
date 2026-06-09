@@ -4,7 +4,7 @@
 {% block page_subtitle %}Pipeline · {{ client.vertical.replace('_',' ') }} · the leads below are this pipeline’s scoped slice of the pool.{% endblock %}
 
 {% block header_actions %}
-<form hx-post="/dashboard/run" hx-target="#toast" hx-swap="innerHTML">
+<form hx-post="/dashboard/run" hx-target="#run-panel" hx-swap="innerHTML">
   <input type="hidden" name="vertical" value="{{ client.vertical }}" />
   <button type="submit"
           class="inline-flex items-center gap-1.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white text-sm font-semibold px-4 py-2 shadow-brand transition active:scale-[0.98]">

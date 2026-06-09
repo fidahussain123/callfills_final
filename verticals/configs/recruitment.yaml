@@ -17,9 +17,11 @@ sources:
   - indeed
   - wellfound
   - rss_feeds
-  - facebook_ads
-  - reddit
-  - twitter
+  # --- Held in the bar (noisy free-text comment soup → junk leads). Re-enable
+  #     once volume/AI-filtering is sorted. Scraper code is untouched. ---
+  # - facebook_ads
+  # - reddit
+  # - twitter
 
 # Roles to enrich a decision-maker contact for (Apollo, when available).
 target_roles:

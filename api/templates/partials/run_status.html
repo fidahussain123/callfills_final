@@ -1,0 +1,72 @@
+{% set LABELS = {'linkedin':'LinkedIn','naukri':'Naukri','indeed':'Indeed','wellfound':'Wellfound','rss':'Funding news','reddit':'Reddit','twitter':'Twitter / X','facebook':'Facebook Ads'} %}
+{% set srcs = run.sources or {} %}
+{% set total = srcs|length %}
+{% set done = (srcs.values()|selectattr('state','equalto','done')|list|length) + (srcs.values()|selectattr('state','equalto','failed')|list|length) %}
+{% set signals = (srcs.values()|map(attribute='count')|sum) if srcs else 0 %}
+{% set pct = 100 if not run.running else (((done / total * 100)|round|int) if total else 8) %}
+<div id="run-status"{% if run.running %} hx-get="/dashboard/run-status" hx-trigger="every 1500ms" hx-swap="outerHTML"{% endif %}>
+  <!-- header -->
+  <div class="px-4 py-3 flex items-center justify-between text-white {% if run.running %}bg-brand-gradient{% elif run.stage == 'error' %}bg-rose-500{% else %}bg-emerald-500{% endif %}">
+    <div class="flex items-center gap-2.5 min-w-0">
+      {% if run.running %}
+      <span class="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin shrink-0"></span>
+      <span class="text-sm font-bold truncate">{% if run.stage == 'verifying' %}Verifying with AI…{% elif run.stage == 'processing' %}Processing leads…{% else %}Scraping {{ run.vertical or '' }}…{% endif %}</span>
+      {% elif run.stage == 'error' %}
+      <span class="text-base shrink-0">⚠</span><span class="text-sm font-bold">Run failed</span>
+      {% else %}
+      <svg class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M4 10.5 8.5 15 16 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="text-sm font-bold">Scrape complete</span>
+      {% endif %}
+    </div>
+    <button type="button" onclick="document.getElementById('run-panel').innerHTML=''" class="text-white/80 hover:text-white text-xl leading-none shrink-0">×</button>
+  </div>
+
+  <!-- progress bar -->
+  <div class="h-1 bg-surface">
+    <div class="h-full transition-all duration-700 ease-out {% if run.stage == 'error' %}bg-rose-500{% elif not run.running %}bg-emerald-500{% else %}bg-brand{% endif %}" style="width: {{ pct }}%"></div>
+  </div>
+
+  <!-- per-source list -->
+  <div class="p-3 space-y-2.5 max-h-72 overflow-y-auto scroll-thin">
+    {% if not srcs %}
+    <p class="text-xs text-muted px-1 py-3 text-center">Spinning up sources…</p>
+    {% endif %}
+    {% for name, s in srcs.items() %}
+    <div class="flex items-center justify-between gap-3 text-sm">
+      <span class="flex items-center gap-2.5 min-w-0">
+        {% if s.state == 'fetching' %}
+        <span class="h-3.5 w-3.5 rounded-full border-2 border-brand/30 border-t-brand animate-spin shrink-0"></span>
+        {% elif s.state == 'done' %}
+        <span class="grid place-items-center h-4 w-4 rounded-full bg-emerald-500 text-white shrink-0"><svg class="h-2.5 w-2.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M4 10.5 8.5 15 16 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        {% elif s.state == 'failed' %}
+        <span class="grid place-items-center h-4 w-4 rounded-full bg-rose-500 text-white text-[10px] leading-none shrink-0">×</span>
+        {% else %}
+        <span class="h-3.5 w-3.5 rounded-full border border-edge bg-surface shrink-0"></span>
+        {% endif %}
+        <span class="truncate {% if s.state == 'queued' %}text-muted{% else %}text-ink{% endif %}">{{ LABELS.get(name, name|capitalize) }}</span>
+      </span>
+      <span class="text-xs whitespace-nowrap {% if s.state == 'done' %}text-emerald-600 dark:text-emerald-400 font-medium{% elif s.state == 'failed' %}text-rose-500{% else %}text-muted{% endif %}">
+        {% if s.state == 'fetching' %}fetching…{% elif s.state == 'done' %}{{ s.count }} found{% elif s.state == 'failed' %}failed{% else %}queued{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- footer -->
+  <div class="px-4 py-2.5 border-t border-edge flex items-center justify-between gap-2 text-xs">
+    {% if run.running %}
+    <span class="text-muted tabular-nums">{{ done }}/{{ total }} sources · {{ signals }} signals</span>
+    <span class="flex items-center gap-1.5 text-muted"><span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>live</span>
+    {% elif run.stage == 'error' %}
+    <span class="text-rose-500">Something went wrong — check the server logs.</span>
+    {% else %}
+    <span class="text-ink font-semibold tabular-nums">{{ run.leads or 0 }} leads · {{ run.qualified or 0 }} qualified</span>
+    <a href="/dashboard/leads-view"
+       class="text-brand dark:text-brandlight font-semibold hover:underline">Show leads →</a>
+    {% endif %}
+  </div>
+
+  {% if not run.running and run.leads is not none and run.leads > 0 %}
+  <span hx-get="/dashboard/leads" hx-target="#lead-table" hx-swap="innerHTML" hx-trigger="load" class="hidden"></span>
+  {% endif %}
+</div>

@@ -21,6 +21,7 @@ from config import settings
 from db import store
 from db.models import Client
 from processors import (
+    ai_verify,
     cross_ref,
     deduplicator,
     enricher,
@@ -37,6 +38,19 @@ logger = logging.getLogger("lead-intel.pipeline")
 # Tracks the most recent run for the /health endpoint.
 LAST_RUN: dict[str, Optional[datetime]] = {"last_pipeline_run": None}
 
+# Live progress of the current/last run, surfaced to the dashboard's scrape
+# animation (updated in-process as each source is fetched). Single-instance.
+RUN_STATUS: dict[str, Any] = {
+    "running": False,
+    "stage": "idle",          # starting | scraping | processing | done | error
+    "vertical": None,
+    "started_at": None,
+    "finished_at": None,
+    "sources": {},            # platform -> {"state": queued|fetching|done|failed, "count": int}
+    "leads": None,
+    "qualified": None,
+}
+
 
 def _scrapers_for(vertical_config: dict[str, Any]) -> list[BaseScraper]:
     """Instantiate the scrapers a vertical declares (registry-driven)."""
@@ -45,11 +59,16 @@ def _scrapers_for(vertical_config: dict[str, Any]) -> list[BaseScraper]:
 
 
 async def _fetch_source(scraper: BaseScraper, lookback_days: int) -> list:
-    """Run one scraper's blocking fetch in a thread so sources run concurrently."""
+    """Run one scraper's blocking fetch in a thread, reporting live status."""
+    name = getattr(scraper, "source_platform", type(scraper).__name__)
+    RUN_STATUS["sources"][name] = {"state": "fetching", "count": 0}
     try:
-        return await asyncio.to_thread(scraper.fetch, lookback_days)
+        result = await asyncio.to_thread(scraper.fetch, lookback_days)
+        RUN_STATUS["sources"][name] = {"state": "done", "count": len(result)}
+        return result
     except Exception as exc:  # noqa: BLE001
         logger.error("Scraper %s failed: %s", type(scraper).__name__, exc)
+        RUN_STATUS["sources"][name] = {"state": "failed", "count": 0}
         return []
 
 
@@ -86,6 +105,7 @@ async def run_pipeline(
         "started_at": datetime.now(timezone.utc).isoformat(),
         "raw_signals": 0,
         "normalized": 0,
+        "after_ai_verify": 0,
         "after_dedup": 0,
         "companies": 0,
         "enriched": 0,
@@ -97,15 +117,32 @@ async def run_pipeline(
 
     # STEP 1 — Scrape the vertical's sources in parallel.
     scrapers = _scrapers_for(vertical_config)
+    RUN_STATUS.update({
+        "running": True, "stage": "scraping", "vertical": vertical,
+        "started_at": datetime.now(timezone.utc).isoformat(), "finished_at": None,
+        "leads": None, "qualified": None,
+        "sources": {
+            getattr(s, "source_platform", type(s).__name__): {"state": "queued", "count": 0}
+            for s in scrapers
+        },
+    })
     raw_lists = await asyncio.gather(
         *(_fetch_source(s, lookback_days) for s in scrapers)
     )
     raw_signals = [sig for sublist in raw_lists for sig in sublist]
     stats["raw_signals"] = len(raw_signals)
+    RUN_STATUS["stage"] = "processing"
 
     # STEP 2 — Normalize → canonical signals.
     normalized = normalizer.normalize_all(raw_signals)
     stats["normalized"] = len(normalized)
+
+    # STEP 2.5 — AI verification gate. Filters noisy free-text signals (Reddit,
+    # X, Facebook) down to real, on-niche companies (no-op without GROQ_API_KEY).
+    RUN_STATUS["stage"] = "verifying"
+    normalized = await ai_verify.verify_signals(normalized, vertical_config)
+    stats["after_ai_verify"] = len(normalized)
+    RUN_STATUS["stage"] = "processing"
 
     # STEP 3 — Deduplicate (24h window per company; no-op without Redis).
     deduped = deduplicator.filter_duplicates(normalized)
@@ -137,6 +174,13 @@ async def run_pipeline(
 
     LAST_RUN["last_pipeline_run"] = datetime.now(timezone.utc)
     stats["finished_at"] = datetime.now(timezone.utc).isoformat()
+    RUN_STATUS.update({
+        "running": False,
+        "stage": "done",
+        "finished_at": stats["finished_at"],
+        "leads": len(lead_cards),
+        "qualified": stats["leads_meeting_threshold"],
+    })
     logger.info("Pipeline run complete: %s", stats)
     return stats
 

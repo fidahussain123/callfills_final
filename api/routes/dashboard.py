@@ -179,19 +179,34 @@ async def run_now(
             {"message": f"A '{vertical}' scrape is already running — refresh in a few minutes."},
         )
 
-    from pipeline import run_pipeline
+    from pipeline import RUN_STATUS, run_pipeline
+
+    # Seed a "starting" status so the first poll shows the panel immediately.
+    RUN_STATUS.update({
+        "running": True, "stage": "starting", "vertical": vertical,
+        "sources": {}, "leads": None, "qualified": None,
+    })
 
     async def _job() -> None:
         try:
             await run_pipeline(vertical=vertical)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Pipeline run failed: %s", exc)
+            RUN_STATUS.update({"running": False, "stage": "error"})
         finally:
             _inflight.discard(vertical)
+            if RUN_STATUS.get("running"):
+                RUN_STATUS.update({"running": False, "stage": "error"})
 
     _inflight.add(vertical)
     asyncio.create_task(_job())
     logger.info("Pipeline run triggered for %s by %s", vertical, user.get("email"))
-    return templates.TemplateResponse(
-        request,
-        "partials/toast.html",
-        {"message": f"Pipeline started for '{vertical}'. Refresh in a few minutes."},
-    )
+    return templates.TemplateResponse(request, "partials/run_panel.html", {"run": RUN_STATUS})
+
+
+@router.get("/dashboard/run-status", response_class=HTMLResponse)
+def run_status(request: Request, user: dict = Depends(require_user)) -> HTMLResponse:
+    """Live scrape-progress partial — polled by the run panel every ~1.5s."""
+    from pipeline import RUN_STATUS
+
+    return templates.TemplateResponse(request, "partials/run_status.html", {"run": RUN_STATUS})
