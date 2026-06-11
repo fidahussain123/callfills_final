@@ -108,6 +108,23 @@ def score(company: dict[str, Any], vertical_config: dict[str, Any]) -> tuple[int
     if "wellfound" in sources:
         credit("signal_from_wellfound")
 
+    # --- Directory-listing quality (Google Maps, IndiaMART leads) ---
+    if {"local_business", "supplier_listing"} & signal_types:
+        if company.get("phone"):
+            credit("has_phone")
+        if company.get("website"):
+            credit("has_website")
+        else:
+            credit("no_website")  # prime prospect for a web/marketing agency
+        if company.get("email"):
+            credit("has_email_listed")
+        rating = company.get("rating")
+        if isinstance(rating, (int, float)) and rating >= 4.0:
+            credit("rating_4_plus")
+        reviews = company.get("review_count")
+        if isinstance(reviews, (int, float)) and reviews >= 20:
+            credit("reviews_20_plus")
+
     # --- Enrichment + multi-platform corroboration ---
     if has_email:
         credit("contact_email_found")

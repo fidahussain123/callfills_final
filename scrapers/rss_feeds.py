@@ -28,7 +28,7 @@ _FEED_UA = "Mozilla/5.0 (compatible; CallfillsBot/1.0; +https://callfills.com)"
 
 from config import settings
 from db.models import NormalizedSignal, RawSignal
-from processors.extractor import extract_funding_company
+from processors.extractor import extract_funding_company, extract_hq_city
 from scrapers.base import BaseScraper
 from scrapers.registry import register_scraper
 from signal_types import FUNDING_ROUND
@@ -151,22 +151,27 @@ class RSSFeedsScraper(BaseScraper):
         if not company:
             return None
 
+        summary = item.get("summary", "")
         round_match = _ROUND_PATTERN.search(title)
         amount_match = _AMOUNT_PATTERN.search(title)
         published = self.parse_iso(item.get("published_parsed")) or self.parse_iso(
             item.get("published")
         )
+        # HQ city (from "Bengaluru-based"/"headquartered in …") so funding leads
+        # can be plotted on the map; None when the article doesn't state it.
+        hq_city = extract_hq_city(f"{title} {summary}")
 
         return NormalizedSignal(
             company_name=company,
             company_domain=None,
             signal_type=FUNDING_ROUND,
             source_platform=self.source_platform,
-            raw_text=f"{title} {item.get('summary', '')}".strip(),
+            raw_text=f"{title} {summary}".strip(),
             source_url=item.get("link", ""),
             detected_at=published or self.cutoff(0),
             metadata={
                 "headline": title,
+                "location": hq_city,
                 "feed_source": item.get("feed_source"),
                 "funding_round": round_match.group(0) if round_match else None,
                 "funding_amount": amount_match.group(0) if amount_match else None,

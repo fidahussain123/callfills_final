@@ -5,13 +5,6 @@
 
 {% block header_actions %}
 <div class="flex items-center gap-2">
-  {# Everyone can fetch (re-pull their feed — free, no scrape) #}
-  <button type="button" hx-get="/dashboard/leads" hx-target="#lead-table" hx-swap="innerHTML"
-          class="inline-flex items-center gap-1.5 rounded-lg border border-edge bg-panel hover:bg-surface text-ink text-sm font-semibold px-3.5 py-2 shadow-sm transition">
-    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4.5v3h-3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    Fetch
-  </button>
-
   {# Everyone can run a scrape. Operators pick the vertical; clients are locked to their pipeline's. #}
   <form hx-post="/dashboard/run" hx-target="#run-panel" hx-swap="innerHTML" class="flex items-center gap-2">
     {% if tenant and tenant.is_operator %}
@@ -37,10 +30,8 @@
 {% set counts = stats.counts or {} %}
 {% set s = stats.stats or {} %}
 {% set total_leads = counts.get('leads', 0) %}
-{% set qualified = s.get('leads_meeting_threshold', 0) %}
 {% set companies = counts.get('companies', 0) %}
 {% set signals = counts.get('signals', 0) %}
-{% set qualified_pct = ((qualified / total_leads * 100) | round(0, 'common') | int) if total_leads else 0 %}
 {% set avg_signals = ((signals / companies) | round(1)) if companies else 0 %}
 
 {% if tenant and tenant.needs_workspace %}
@@ -64,21 +55,16 @@
     <p class="mt-2 text-xs text-muted">{{ companies }} companies scanned</p>
   </div>
 
-  <!-- Qualified -->
+  <!-- Sources -->
   <div class="animate-rise rounded-2xl bg-panel border border-edge p-5 shadow-card" style="animation-delay:60ms">
     <div class="flex items-center justify-between">
-      <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Qualified</span>
+      <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Sources</span>
       <span class="grid place-items-center h-8 w-8 rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300">
-        <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 10.5 8.5 15 16 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h12M4 11h12M4 15h8" stroke-linecap="round"/></svg>
       </span>
     </div>
-    <p class="mt-4 text-[28px] font-extrabold text-ink tabular-nums leading-none">{{ qualified }}</p>
-    <div class="mt-2.5 flex items-center gap-2">
-      <div class="flex-1 h-1.5 rounded-full bg-surface overflow-hidden">
-        <div class="h-full rounded-full bg-emerald-500" style="width: {{ qualified_pct }}%"></div>
-      </div>
-      <span class="text-[11px] font-semibold text-muted tabular-nums shrink-0">{{ qualified_pct }}%</span>
-    </div>
+    <p class="mt-4 text-[28px] font-extrabold text-ink tabular-nums leading-none">{{ sources|length }}</p>
+    <p class="mt-2 text-xs text-muted truncate">{{ (sources[:3] | join(' · ')) or 'no sources yet' }}</p>
   </div>
 
   <!-- Companies -->
@@ -106,50 +92,66 @@
   </div>
 </section>
 
-<!-- Section header -->
-<div class="flex items-end justify-between mb-4">
-  <div>
-    <h3 class="text-[15px] font-bold text-ink tracking-tight">{% if tenant and not tenant.is_operator %}{{ tenant.client_name }} · Leads{% else %}All Leads{% endif %}</h3>
-    <p class="text-xs text-muted mt-0.5">
-      {% if stats.generated_at %}Last run {{ stats.generated_at[:19].replace('T',' ') }} UTC{% else %}No pipeline run yet{% endif %}{% if tenant and tenant.is_operator %} · the shared pool across all pipelines{% endif %}
-    </p>
-  </div>
-</div>
+{# Animated map of geolocated leads (Google Maps pipelines) — hidden otherwise #}
+{% include "partials/leads_map.html" %}
 
-<!-- Filter bar -->
-<form class="rounded-xl bg-panel border border-edge p-3 mb-4 flex flex-col md:flex-row md:flex-wrap md:items-center gap-2.5 shadow-card"
-      hx-get="/dashboard/leads" hx-target="#lead-table" hx-swap="innerHTML"
-      hx-trigger="submit, change, keyup delay:350ms from:input[name='q']">
-  <div class="relative flex-1 min-w-[200px]">
-    <svg class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="9" r="6"/><path d="m18 18-3.5-3.5" stroke-linecap="round"/></svg>
-    <input type="text" name="q" placeholder="Search company or website…"
-           class="w-full rounded-lg bg-canvas border border-edge pl-9 pr-3 py-2 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
+{# Overview lists — the full filterable table lives on the Leads page #}
+{% macro lead_row(lead, rank) %}
+<li class="group flex items-center gap-3 px-5 py-3 hover:bg-brand/[0.04] cursor-pointer transition"
+    hx-get="/dashboard/leads/{{ lead.company_name | urlencode }}" hx-target="#drawer" hx-swap="innerHTML">
+  <span class="text-[11px] font-bold text-muted/70 tabular-nums w-4 shrink-0">{{ rank }}</span>
+  <span class="grid place-items-center h-8 w-8 rounded-lg bg-brand/10 text-brand dark:text-brandlight text-xs font-bold shrink-0 ring-1 ring-brand/15">{{ (lead.company_name or '?')[:1] | upper }}</span>
+  <div class="min-w-0 flex-1">
+    <p class="text-sm font-semibold text-ink truncate group-hover:text-brand dark:group-hover:text-brandlight transition">{{ lead.company_name }}</p>
+    <p class="text-[11px] text-muted truncate">{{ (lead.signal_sources or []) | join(' · ') or '—' }}{% if lead.location %} · {{ lead.location }}{% endif %}</p>
   </div>
-  <select name="source" class="w-full md:w-40 rounded-lg bg-canvas border border-edge px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand">
-    <option value="">All sources</option>
-    {% for src in sources %}<option value="{{ src }}">{{ src }}</option>{% endfor %}
-  </select>
-  <select name="funding" class="w-full md:w-36 rounded-lg bg-canvas border border-edge px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand">
-    <option value="any">Funding: any</option>
-    <option value="yes">Funded</option>
-    <option value="no">Not funded</option>
-  </select>
-  <select name="hiring" class="w-full md:w-36 rounded-lg bg-canvas border border-edge px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand">
-    <option value="any">Hiring: any</option>
-    <option value="yes">Hiring</option>
-    <option value="no">Not hiring</option>
-  </select>
-  <input type="number" name="min_score" min="0" max="100" placeholder="Min score"
-         class="w-full md:w-28 rounded-lg bg-canvas border border-edge px-3 py-2 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
-  <label class="flex items-center gap-2 text-xs font-medium text-muted whitespace-nowrap md:pl-1 cursor-pointer select-none">
-    <input type="checkbox" name="threshold" value="yes" class="h-4 w-4 rounded border-edge accent-brand" /> Qualified only
-  </label>
-</form>
+  <span class="text-[11px] text-muted whitespace-nowrap shrink-0">{% if lead.signals and lead.signals[0].detected_at %}{{ lead.signals[0].detected_at[:10] }}{% endif %}</span>
+</li>
+{% endmacro %}
 
-<!-- Lead table -->
-<div class="rounded-xl bg-panel border border-edge overflow-hidden shadow-card">
-  <div id="lead-table" class="scroll-thin overflow-x-auto">
-    {% include "partials/lead_table.html" %}
+<div class="grid lg:grid-cols-2 gap-5">
+  <!-- Top leads (best first — internal ranking, no visible score) -->
+  <div class="rounded-xl bg-panel border border-edge overflow-hidden shadow-card">
+    <div class="px-5 py-3 border-b border-edge flex items-center justify-between">
+      <h3 class="text-[15px] font-bold text-ink tracking-tight flex items-center gap-2">
+        <span class="grid place-items-center h-6 w-6 rounded-md bg-brand/10 text-brand dark:text-brandlight">
+          <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M10 3l2 4 4 .5-3 3 .8 4.2L10 16l-3.8 1.7.8-4.2-3-3 4-.5z" stroke-linejoin="round"/></svg>
+        </span>
+        Top leads
+      </h3>
+      <a href="/dashboard/leads-view" class="text-xs font-semibold text-brand dark:text-brandlight hover:underline">View all →</a>
+    </div>
+    {% if top_leads %}
+    <ul class="divide-y divide-edge">
+      {% for lead in top_leads %}{{ lead_row(lead, loop.index) }}{% endfor %}
+    </ul>
+    {% else %}
+    <div class="px-6 py-10 text-center">
+      <p class="text-ink text-sm font-semibold">No leads yet</p>
+      <p class="text-muted text-xs mt-1">Hit “Run pipeline” to do your first scrape.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Latest leads (most recent signal first) -->
+  <div class="rounded-xl bg-panel border border-edge overflow-hidden shadow-card">
+    <div class="px-5 py-3 border-b border-edge flex items-center justify-between">
+      <div>
+        <h3 class="text-[15px] font-bold text-ink tracking-tight">Latest leads</h3>
+        <p class="text-[11px] text-muted mt-0.5">{% if stats.generated_at %}Last run {{ stats.generated_at[:16].replace('T',' ') }} UTC{% else %}No pipeline run yet{% endif %}</p>
+      </div>
+      <a href="/dashboard/leads-view" class="text-xs font-semibold text-brand dark:text-brandlight hover:underline">View all →</a>
+    </div>
+    {% if recent_leads %}
+    <ul class="divide-y divide-edge">
+      {% for lead in recent_leads %}{{ lead_row(lead, loop.index) }}{% endfor %}
+    </ul>
+    {% else %}
+    <div class="px-6 py-10 text-center">
+      <p class="text-ink text-sm font-semibold">No leads yet</p>
+      <p class="text-muted text-xs mt-1">Hit “Run pipeline” to do your first scrape.</p>
+    </div>
+    {% endif %}
   </div>
 </div>
 

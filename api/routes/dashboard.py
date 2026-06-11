@@ -63,14 +63,27 @@ def _sources_for(tenant: dict[str, Any], leads: list[dict[str, Any]]) -> list[st
 
 @router.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, user: dict = Depends(require_user)) -> HTMLResponse:
-    """Render the dashboard shell, scoped to the user's tenant."""
+    """Overview: stat cards + map + compact qualified/top lead lists.
+
+    The full, filterable, paginated table lives on the Leads page — the
+    dashboard is a glanceable summary, not the working list.
+    """
     tenant = resolve_tenant(user)
     leads = scope_leads(tenant, store.get_leads(limit=300))
+    top_leads = leads[:8]  # store returns best-first (internal rank, no visible score)
+
+    def _latest(lead: dict[str, Any]) -> str:
+        sigs = lead.get("signals") or []
+        return (sigs[0].get("detected_at") or "") if sigs else ""
+
+    recent_leads = sorted(leads, key=_latest, reverse=True)[:8]
     return templates.TemplateResponse(
         request,
         "dashboard.html",
         {
             "leads": leads,
+            "top_leads": top_leads,
+            "recent_leads": recent_leads,
             "stats": _stats_for(tenant, leads),
             "sources": _sources_for(tenant, leads),
             "verticals": list_verticals(),
@@ -80,18 +93,30 @@ def dashboard(request: Request, user: dict = Depends(require_user)) -> HTMLRespo
     )
 
 
+# Leads page shows a manageable page at a time, not the whole pool.
+_PAGE_SIZE = 25
+
+
 @router.get("/dashboard/leads-view", response_class=HTMLResponse)
 def leads_view(request: Request, user: dict = Depends(require_user)) -> HTMLResponse:
-    """Dedicated full-page leads table (no stat cards) — the 'Leads' nav item."""
+    """Dedicated leads page: filters + per-source counts + paginated table."""
     tenant = resolve_tenant(user)
-    leads = scope_leads(tenant, store.get_leads(limit=300))
+    all_leads = scope_leads(tenant, store.get_leads(limit=1000))
+    source_counts: dict[str, int] = {}
+    for lead in all_leads:
+        for src in lead.get("signal_sources") or []:
+            source_counts[src] = source_counts.get(src, 0) + 1
     return templates.TemplateResponse(
         request,
         "leads.html",
         {
-            "leads": leads,
-            "stats": _stats_for(tenant, leads),
-            "sources": _sources_for(tenant, leads),
+            "leads": all_leads[:_PAGE_SIZE],
+            "total": len(all_leads),
+            "offset": 0,
+            "page_size": _PAGE_SIZE,
+            "source_counts": sorted(source_counts.items(), key=lambda kv: -kv[1]),
+            "stats": _stats_for(tenant, all_leads),
+            "sources": _sources_for(tenant, all_leads),
             "verticals": list_verticals(),
             "user": user,
             "tenant": tenant,
@@ -108,9 +133,10 @@ def leads_partial(
     funding: Optional[str] = Query(None),
     hiring: Optional[str] = Query(None),
     threshold: Optional[str] = Query(None),
+    offset: int = Query(0, ge=0),
     user: dict = Depends(require_user),
 ) -> HTMLResponse:
-    """HTMX partial: the filtered, tenant-scoped lead table body."""
+    """HTMX partial: one page of the filtered, tenant-scoped lead table."""
     tenant = resolve_tenant(user)
     leads = scope_leads(
         tenant,
@@ -121,11 +147,20 @@ def leads_partial(
             has_hiring=_parse_bool(hiring),
             only_threshold=threshold == "yes",
             search=q or None,
-            limit=300,
+            limit=1000,
         ),
     )
+    total = len(leads)
+    offset = min(offset, max(0, total - 1)) if total else 0
     return templates.TemplateResponse(
-        request, "partials/lead_table.html", {"leads": leads}
+        request,
+        "partials/lead_table.html",
+        {
+            "leads": leads[offset : offset + _PAGE_SIZE],
+            "total": total,
+            "offset": offset,
+            "page_size": _PAGE_SIZE,
+        },
     )
 
 
@@ -162,6 +197,7 @@ async def run_now(
     scrapes of the same vertical.
     """
     tenant = resolve_tenant(user)
+    search: Optional[dict[str, Any]] = None
     if not tenant.get("is_operator"):
         client = tenant.get("client")
         if not client:
@@ -171,6 +207,7 @@ async def run_now(
                 {"message": "No pipeline is assigned to you yet."},
             )
         vertical = client.get("vertical") or vertical  # lock clients to their vertical
+        search = client.get("filters") or None  # targeted search (e.g. Maps category/city)
 
     if vertical in _inflight:
         return templates.TemplateResponse(
@@ -189,7 +226,7 @@ async def run_now(
 
     async def _job() -> None:
         try:
-            await run_pipeline(vertical=vertical)
+            await run_pipeline(vertical=vertical, search=search)
         except Exception as exc:  # noqa: BLE001
             logger.error("Pipeline run failed: %s", exc)
             RUN_STATUS.update({"running": False, "stage": "error"})

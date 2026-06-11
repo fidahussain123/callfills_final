@@ -176,6 +176,16 @@ class LeadCard(BaseModel):
     email: Optional[str] = None
     linkedin_url: Optional[str] = None
 
+    # Local business (Google Maps leads) — None for intent verticals.
+    phone: Optional[str] = None
+    rating: Optional[float] = None
+    review_count: Optional[int] = None
+    category: Optional[str] = None
+    address: Optional[str] = None
+    maps_url: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
     # Lifecycle
     status: str = "new"
     created_at: str = Field(default_factory=lambda: _utcnow().isoformat())

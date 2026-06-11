@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Signals · CALLFILLS{% endblock %}
 {% block page_title %}Signals{% endblock %}
-{% block page_subtitle %}Live buying-intent — freshest first. The moment a company posts, it surfaces at the top.{% endblock %}
+{% block page_subtitle %}Social intent radar — raw posts scraped from Reddit, Twitter / X, Facebook & more, freshest first.{% endblock %}
 
 {% block content %}
 {% set tone = {
@@ -11,6 +11,13 @@
   'ok':    'bg-surface text-muted ring-edge',
   'stale': 'bg-surface text-muted ring-edge'
 } %}
+{% set ptone = {
+  'reddit':    'bg-orange-50 text-orange-700 ring-orange-200 dark:bg-orange-500/15 dark:text-orange-300 dark:ring-orange-500/30',
+  'twitter':   'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-500/30',
+  'facebook':  'bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-500/30',
+  'hackernews':'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30'
+} %}
+{% set plabel = {'reddit':'Reddit','twitter':'Twitter / X','facebook':'Facebook','hackernews':'Hacker News'} %}
 
 <!-- Freshness strip -->
 <section class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
@@ -30,26 +37,49 @@
     <p class="mt-2 text-[26px] font-extrabold text-ink tabular-nums leading-none">{{ tiers['recent'] or 0 }}</p>
   </div>
   <div class="rounded-2xl bg-panel border border-edge p-4 shadow-card">
-    <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Total signals</span>
+    <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Social posts</span>
     <p class="mt-2 text-[26px] font-extrabold text-ink tabular-nums leading-none">{{ signals|length }}</p>
   </div>
 </section>
 
-<p class="text-xs text-muted mb-4">
-  Signals refresh on each pipeline run. <span class="text-rose-600 dark:text-rose-400 font-medium">Live</span> = posted under a minute ago.
-  Run a scrape (or raise the cadence) to pull intent the instant it appears.
-</p>
+<!-- Platform tabs -->
+<div class="flex flex-wrap items-center gap-2 mb-4">
+  <a href="/dashboard/signals"
+     class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold ring-1 transition {% if not platform %}bg-brand-gradient text-white ring-transparent shadow-brand{% else %}bg-panel text-ink ring-edge hover:bg-surface{% endif %}">
+    All social
+  </a>
+  {% for p in ['reddit', 'twitter', 'facebook', 'hackernews'] %}
+  {% if platform_counts[p] %}
+  <a href="/dashboard/signals?platform={{ p }}"
+     class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold ring-1 transition {% if platform == p %}bg-brand-gradient text-white ring-transparent shadow-brand{% else %}bg-panel text-ink ring-edge hover:bg-surface{% endif %}">
+    {{ plabel[p] }}
+    <span class="{% if platform == p %}text-white/80{% else %}text-muted{% endif %} tabular-nums">{{ platform_counts[p] }}</span>
+  </a>
+  {% endif %}
+  {% endfor %}
+  {% if radar_enabled %}
+  <span class="inline-flex items-center gap-1.5 text-[11px] text-muted ml-auto">
+    <span class="relative flex h-2 w-2"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70"></span><span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span></span>
+    Radar active — Hacker News live · Reddit joins when API keys are added
+  </span>
+  {% else %}
+  <span class="text-[11px] text-muted ml-auto">⚡ Radar off — set RADAR_ENABLED=true for the live watcher.</span>
+  {% endif %}
+</div>
 
-<!-- Feed (freshest first) -->
-<div class="rounded-xl bg-panel border border-edge overflow-hidden shadow-card">
+<!-- Feed (freshest first) — self-refreshes every 30s while the radar runs -->
+<div id="signal-feed"
+     {% if radar_enabled %}hx-get="{{ request.url.path }}{% if platform %}?platform={{ platform }}{% endif %}"
+     hx-trigger="every 30s" hx-select="#signal-feed" hx-swap="outerHTML"{% endif %}
+     class="rounded-xl bg-panel border border-edge overflow-hidden shadow-card">
   <div class="px-5 py-3 border-b border-edge flex items-center justify-between">
-    <h3 class="text-[15px] font-bold text-ink tracking-tight">Signal feed</h3>
+    <h3 class="text-[15px] font-bold text-ink tracking-tight">{% if platform %}{{ plabel[platform] }} feed{% else %}Social feed{% endif %}</h3>
     <span class="text-xs text-muted">{% if stats.generated_at %}synced {{ stats.generated_at[:16].replace('T',' ') }} UTC{% endif %}</span>
   </div>
   {% if not signals %}
   <div class="px-6 py-16 text-center">
-    <p class="text-ink text-sm font-semibold">No signals yet</p>
-    <p class="text-muted text-xs mt-1">Run a scrape to pull live intent signals.</p>
+    <p class="text-ink text-sm font-semibold">No social signals in the pool</p>
+    <p class="text-muted text-xs mt-1 max-w-sm mx-auto">Social sources (Reddit / Twitter / Facebook) are currently paused in the scrape config. Re-enable them — or wait for the real-time watcher — and posts will stream in here.</p>
   </div>
   {% else %}
   <ul class="divide-y divide-edge max-h-[70vh] overflow-y-auto scroll-thin">
@@ -62,16 +92,15 @@
       </span>
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2 flex-wrap">
+          <span class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 {{ ptone[s.source_platform] or 'bg-surface text-muted ring-edge' }}">{{ plabel[s.source_platform] or s.source_platform }}</span>
           <span class="font-semibold text-ink truncate">{{ s.company_name or '—' }}</span>
           <span class="rounded-md bg-surface text-muted ring-1 ring-edge text-[11px] px-2 py-0.5">{{ (s.signal_type or '').replace('_',' ') }}</span>
-          <span class="text-[11px] text-muted">{{ s.source_platform }}</span>
         </div>
-        {% if s.raw_text %}<p class="mt-1 text-sm text-slate-600 dark:text-slate-300 line-clamp-2">{{ s.raw_text[:180] }}</p>{% endif %}
+        {% if s.raw_text %}<p class="mt-1 text-sm text-slate-600 dark:text-slate-300 line-clamp-2">{{ s.raw_text[:200] }}</p>{% endif %}
         <div class="mt-1 flex items-center gap-3 text-[11px] text-muted">
-          {% if meta.role_title %}<span>{{ meta.role_title }}</span>{% endif %}
+          {% if meta.subreddit %}<span>r/{{ meta.subreddit }}</span>{% endif %}
           {% if meta.location %}<span>· {{ meta.location }}</span>{% endif %}
-          {% if meta.funding_amount %}<span>· {{ meta.funding_amount }}</span>{% endif %}
-          {% if s.source_url %}<a href="{{ s.source_url }}" target="_blank" class="text-brand dark:text-brandlight hover:underline">View ↗</a>{% endif %}
+          {% if s.source_url %}<a href="{{ s.source_url }}" target="_blank" class="text-brand dark:text-brandlight hover:underline">Open post ↗</a>{% endif %}
         </div>
       </div>
     </li>

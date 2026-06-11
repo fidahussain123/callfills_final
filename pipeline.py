@@ -52,8 +52,18 @@ RUN_STATUS: dict[str, Any] = {
 }
 
 
-def _scrapers_for(vertical_config: dict[str, Any]) -> list[BaseScraper]:
-    """Instantiate the scrapers a vertical declares (registry-driven)."""
+def _scrapers_for(
+    vertical_config: dict[str, Any], search: Optional[dict[str, Any]] = None
+) -> list[BaseScraper]:
+    """Instantiate the scrapers for a run (registry-driven).
+
+    A pipeline can override the vertical's default source list via its ICP
+    (``filters.sources`` — the per-pipeline tool toggles). Unknown keys are
+    skipped gracefully by the registry.
+    """
+    override = (search or {}).get("sources")
+    if isinstance(override, list) and override:
+        return build_instances([str(s) for s in override])
     sources = vertical_config.get("sources") or None
     return build_instances(sources)
 
@@ -94,8 +104,23 @@ def _company_filters_match(company: dict[str, Any], filters: dict[str, Any]) -> 
     return True
 
 
+def _configure_scrapers(scrapers: list[BaseScraper], vertical_config: dict[str, Any],
+                        search: Optional[dict[str, Any]]) -> None:
+    """Inject per-pipeline search params (category/cities) into scrapers that
+    accept them (e.g. Google Maps). Sources without ``configure`` are untouched."""
+    search_cfg = {**(vertical_config.get("filters") or {}), **(search or {})}
+    for scraper in scrapers:
+        if hasattr(scraper, "configure"):
+            try:
+                scraper.configure(search_cfg)  # type: ignore[attr-defined]
+            except Exception as exc:  # noqa: BLE001
+                logger.error("configure failed for %s: %s", type(scraper).__name__, exc)
+
+
 async def run_pipeline(
-    lookback_days: Optional[int] = None, vertical: str = "recruitment"
+    lookback_days: Optional[int] = None,
+    vertical: str = "recruitment",
+    search: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Execute one full pipeline run and return summary statistics."""
     lookback_days = lookback_days or settings.LOOKBACK_DAYS
@@ -115,8 +140,9 @@ async def run_pipeline(
     }
     logger.info("Pipeline run starting (vertical=%s, lookback=%d)", vertical, lookback_days)
 
-    # STEP 1 — Scrape the vertical's sources in parallel.
-    scrapers = _scrapers_for(vertical_config)
+    # STEP 1 — Scrape the pipeline's sources (its toggles, else the vertical's).
+    scrapers = _scrapers_for(vertical_config, search)
+    _configure_scrapers(scrapers, vertical_config, search)
     RUN_STATUS.update({
         "running": True, "stage": "scraping", "vertical": vertical,
         "started_at": datetime.now(timezone.utc).isoformat(), "finished_at": None,
@@ -152,9 +178,11 @@ async def run_pipeline(
     companies = cross_ref.find_overlap(deduped)
     stats["companies"] = len(companies)
 
-    # STEP 5 — Enrich with Apollo (no-op without APOLLO_API_KEY).
-    companies = enricher.enrich_all(companies)
-    stats["enriched"] = sum(1 for c in companies if c.get("enrichment"))
+    # STEP 5 — Enrichment is ON-DEMAND (per-company "Reveal contacts" button),
+    # never on a scrape, so Apollo credits are only spent when a client asks.
+    for company in companies:
+        company["enrichment"] = None
+    stats["enriched"] = 0
 
     # STEP 6 — Build rich Lead Cards (scored against the vertical).
     lead_cards = lead_builder.build_lead_cards(companies, scorer.score, vertical_config)
@@ -183,6 +211,33 @@ async def run_pipeline(
     })
     logger.info("Pipeline run complete: %s", stats)
     return stats
+
+
+async def preview_run(
+    vertical: str = "local_business",
+    search: Optional[dict[str, Any]] = None,
+    max_results: int = 8,
+) -> list[dict[str, Any]]:
+    """Run a small, NON-persisted scrape and return lead-card dicts.
+
+    Powers the Pipelines "test fetch": fetches a capped sample for the given
+    vertical + search (category/cities), runs it through normalize → cross-ref →
+    score → build, and returns the cards WITHOUT touching the stored pool.
+    """
+    vertical_config = get_vertical_config(vertical)
+    scrapers = _scrapers_for(vertical_config, search)
+    _configure_scrapers(
+        scrapers, vertical_config, {**(search or {}), "max_results": max_results}
+    )
+    raw_lists = await asyncio.gather(
+        *(asyncio.to_thread(s.fetch, settings.LOOKBACK_DAYS) for s in scrapers)
+    )
+    raw_signals = [sig for sublist in raw_lists for sig in sublist]
+    normalized = normalizer.normalize_all(raw_signals)
+    deduped = deduplicator.filter_duplicates(normalized)
+    companies = cross_ref.find_overlap(deduped)
+    # Skip Apollo enrichment on previews — a test fetch shouldn't spend credits.
+    return lead_builder.build_lead_cards(companies, scorer.score, vertical_config)
 
 
 def _companies_serializable(companies: list[dict[str, Any]]) -> list[dict[str, Any]]:

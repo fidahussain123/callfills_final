@@ -13,14 +13,15 @@ import logging
 import os
 from collections import Counter
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from api.supabase_auth import require_user
 from api.tenancy import resolve_tenant, scope_leads
+from config import settings
 from db import store
 from processors.quality import normalize_company_name
 
@@ -66,14 +67,39 @@ def _scoped_company_keys(tenant: dict[str, Any]) -> set[str]:
     return {normalize_company_name(l.get("company_name", "")) for l in leads}
 
 
+# The Signals page is the SOCIAL radar: raw posts scraped from social media.
+# Job-board/funding evidence lives on the Leads/Companies pages instead.
+_SOCIAL_PLATFORMS = ("reddit", "twitter", "facebook", "hackernews")
+
+
 @router.get("/dashboard/signals", response_class=HTMLResponse)
-def signals_page(request: Request, user: dict = Depends(require_user)) -> HTMLResponse:
-    """Live signal feed — freshest intent first, with 'posted Xs/Xm ago'."""
+def signals_page(
+    request: Request,
+    platform: Optional[str] = Query(None),
+    user: dict = Depends(require_user),
+) -> HTMLResponse:
+    """Social intent radar — posts from Reddit, X, Facebook…, freshest first."""
     tenant = resolve_tenant(user)
-    signals = store.get_signals()
+    signals = [
+        s for s in store.get_signals()
+        if s.get("source_platform") in _SOCIAL_PLATFORMS
+    ]
+    # Union in the real-time radar feed (AI-verified, stored separately so a
+    # pipeline run can never overwrite it). Dedupe by source_url.
+    from radar import get_radar_signals
+
+    seen_urls = {s.get("source_url") for s in signals}
+    for s in get_radar_signals():
+        if s.get("source_url") not in seen_urls:
+            signals.append(s)
+            seen_urls.add(s.get("source_url"))
     if not tenant.get("is_operator"):
         keys = _scoped_company_keys(tenant)
         signals = [s for s in signals if normalize_company_name(s.get("company_name", "")) in keys]
+
+    platform_counts = Counter(s.get("source_platform") for s in signals)
+    if platform in _SOCIAL_PLATFORMS:
+        signals = [s for s in signals if s.get("source_platform") == platform]
 
     enriched: list[dict[str, Any]] = []
     for s in signals:
@@ -85,7 +111,12 @@ def signals_page(request: Request, user: dict = Depends(require_user)) -> HTMLRe
     return templates.TemplateResponse(
         request,
         "signals.html",
-        {"user": user, "tenant": tenant, "signals": enriched, "tiers": tiers, "stats": store.get_stats()},
+        {
+            "user": user, "tenant": tenant, "signals": enriched, "tiers": tiers,
+            "stats": store.get_stats(), "platform": platform if platform in _SOCIAL_PLATFORMS else None,
+            "platform_counts": platform_counts,
+            "radar_enabled": settings.RADAR_ENABLED,
+        },
     )
 
 
@@ -101,21 +132,80 @@ def companies_page(request: Request, user: dict = Depends(require_user)) -> HTML
     )
 
 
+@router.get("/dashboard/companies/{company_name}", response_class=HTMLResponse)
+def company_detail(
+    request: Request, company_name: str, user: dict = Depends(require_user)
+) -> HTMLResponse:
+    """HTMX drawer: one company — where its signals come from, details, profiles."""
+    tenant = resolve_tenant(user)
+    company = store.get_lead(company_name)
+    if company and not scope_leads(tenant, [company]):
+        company = None  # outside the tenant's slice
+
+    sources: list[dict[str, Any]] = []
+    max_count = 1
+    if company:
+        by_src: dict[str, dict[str, Any]] = {}
+        for sig in company.get("signals") or []:
+            key = sig.get("source_platform") or "other"
+            entry = by_src.setdefault(
+                key, {"platform": key, "count": 0, "latest": "", "url": None, "types": set()}
+            )
+            entry["count"] += 1
+            detected = sig.get("detected_at") or ""
+            if detected >= entry["latest"]:
+                entry["latest"] = detected
+                entry["url"] = sig.get("source_url")
+            if sig.get("signal_type"):
+                entry["types"].add(sig["signal_type"])
+        sources = sorted(by_src.values(), key=lambda e: -e["count"])
+        for entry in sources:
+            entry["types"] = sorted(entry["types"])
+        max_count = max((e["count"] for e in sources), default=1)
+
+    return templates.TemplateResponse(
+        request,
+        "partials/company_detail.html",
+        {"company": company, "sources": sources, "max_count": max_count},
+    )
+
+
+@router.get("/dashboard/companies/{company_name}/contacts", response_class=HTMLResponse)
+def company_contacts(
+    request: Request, company_name: str, user: dict = Depends(require_user)
+) -> HTMLResponse:
+    """On-demand Apollo lookup (the 'Reveal contacts' button): profile + leaders.
+
+    This is the ONLY place Apollo is called — never on a scrape — so credits are
+    spent only when a client explicitly asks for one company's contacts.
+    """
+    from processors import enricher
+
+    tenant = resolve_tenant(user)
+    lead = store.get_lead(company_name)
+    if lead and not scope_leads(tenant, [lead]):
+        lead = None  # outside the tenant's slice
+    result = None
+    if lead:
+        domain = lead.get("company_domain") or lead.get("website")
+        result = enricher.enrich_on_demand(domain, lead.get("company_name", ""))
+    return templates.TemplateResponse(
+        request, "partials/company_contacts.html", {"company": lead, "r": result}
+    )
+
+
 @router.get("/dashboard/analytics", response_class=HTMLResponse)
 def analytics_page(request: Request, user: dict = Depends(require_user)) -> HTMLResponse:
-    """Analytics over the tenant's leads — quality mix, score distribution,
-    sources, signal types, and top companies (rendered as charts)."""
+    """Analytics over the tenant's leads — coverage by source, signal types,
+    and the intent profile (no scoring; just where leads come from)."""
     tenant = resolve_tenant(user)
     leads = scope_leads(tenant, store.get_leads(limit=300))
     total = len(leads)
-    qualified = sum(1 for l in leads if (l.get("score") or 0) >= 60)
-    warm = sum(1 for l in leads if 50 <= (l.get("score") or 0) < 60)
 
     src: Counter = Counter()
     typ: Counter = Counter()
     hiring = funding = social = 0
-    score_labels = ["0–19", "20–39", "40–49", "50–59", "60–79", "80–100"]
-    score_buckets = [0, 0, 0, 0, 0, 0]
+    signals_total = 0
     for l in leads:
         for s in (l.get("signal_sources") or []):
             src[s] += 1
@@ -127,17 +217,13 @@ def analytics_page(request: Request, user: dict = Depends(require_user)) -> HTML
             funding += 1
         if l.get("has_social"):
             social += 1
-        score = l.get("score") or 0
-        idx = (
-            0 if score < 20 else 1 if score < 40 else 2 if score < 50
-            else 3 if score < 60 else 4 if score < 80 else 5
-        )
-        score_buckets[idx] += 1
+        signals_total += len(l.get("signals") or [])
 
-    top = sorted(leads, key=lambda l: l.get("score") or 0, reverse=True)[:10]
-    top_leads = [
-        {"name": (l.get("company_name") or "—")[:26], "score": l.get("score") or 0}
-        for l in top
+    # Most-active companies (by evidence volume) — replaces the old score leaderboard.
+    most_active = sorted(leads, key=lambda l: len(l.get("signals") or []), reverse=True)[:10]
+    top_companies = [
+        {"name": (l.get("company_name") or "—")[:26], "signals": len(l.get("signals") or [])}
+        for l in most_active if l.get("signals")
     ]
 
     return templates.TemplateResponse(
@@ -148,17 +234,13 @@ def analytics_page(request: Request, user: dict = Depends(require_user)) -> HTML
             "tenant": tenant,
             "stats": store.get_stats(),
             "total": total,
-            "qualified": qualified,
-            "warm": warm,
-            "cold": total - qualified - warm,
+            "companies": total,
+            "sources_count": len(src),
+            "signals_total": signals_total,
             "by_source": src.most_common(),
             "by_type": typ.most_common(),
-            "max_source": max([c for _, c in src.most_common()], default=1),
-            "max_type": max([c for _, c in typ.most_common()], default=1),
-            "score_labels": score_labels,
-            "score_buckets": score_buckets,
             "signal_profile": {"Hiring": hiring, "Funding": funding, "Social": social},
-            "top_leads": top_leads,
+            "top_companies": top_companies,
         },
     )
 

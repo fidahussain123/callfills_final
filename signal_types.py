@@ -32,6 +32,12 @@ OUTSOURCE_INTENT = "outsource_intent"  # looking to outsource dev/recruiting
 AGENCY_SWITCH = "agency_switch"      # dissatisfied with current agency
 GROWTH_PAIN = "growth_pain"          # scaling pain expressed publicly
 
+# Local business (Google Maps listing — a real, contactable business)
+LOCAL_BUSINESS = "local_business"
+
+# B2B supplier listing (IndiaMART/TradeIndia — a contactable supplier)
+SUPPLIER_LISTING = "supplier_listing"
+
 # Fallback
 GENERAL_SIGNAL = "general_signal"
 
@@ -54,6 +60,10 @@ SOCIAL_TYPES: frozenset[str] = frozenset(
     {SOCIAL_MENTION, OUTSOURCE_INTENT, AGENCY_SWITCH, GROWTH_PAIN}
 )
 
+#: Types from business directories (Google Maps, IndiaMART) — real, contactable
+#: businesses with no "posted at" freshness, so quality gates treat them as live.
+LOCAL_TYPES: frozenset[str] = frozenset({LOCAL_BUSINESS, SUPPLIER_LISTING})
+
 #: All recognized canonical types.
 ALL_TYPES: frozenset[str] = frozenset(
     {
@@ -68,6 +78,8 @@ ALL_TYPES: frozenset[str] = frozenset(
         OUTSOURCE_INTENT,
         AGENCY_SWITCH,
         GROWTH_PAIN,
+        LOCAL_BUSINESS,
+        SUPPLIER_LISTING,
         GENERAL_SIGNAL,
     }
 )
@@ -102,3 +114,8 @@ def is_hiring(signal_type: str | None) -> bool:
 def is_funding(signal_type: str | None) -> bool:
     """True if the (canonicalized) type counts as a funding/growth signal."""
     return canonical(signal_type) in FUNDING_TYPES
+
+
+def is_local(signal_type: str | None) -> bool:
+    """True if the (canonicalized) type is a local-business listing."""
+    return canonical(signal_type) in LOCAL_TYPES

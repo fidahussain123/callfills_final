@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Analytics · CALLFILLS{% endblock %}
 {% block page_title %}Analytics{% endblock %}
-{% block page_subtitle %}Your pipeline at a glance — quality mix, score distribution, sources, and signals.{% endblock %}
+{% block page_subtitle %}Your pipeline at a glance — where leads come from, signal types, and intent profile.{% endblock %}
 
 {% block content %}
 <!-- KPI cards -->
@@ -11,17 +11,16 @@
     <p class="mt-3 text-[28px] font-extrabold text-ink tabular-nums leading-none">{{ total }}</p>
   </div>
   <div class="rounded-2xl bg-panel border border-edge p-5 shadow-card">
-    <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-emerald-600 dark:text-emerald-400">Qualified · ≥60</span>
-    <p class="mt-3 text-[28px] font-extrabold text-ink tabular-nums leading-none">{{ qualified }}</p>
-    <p class="mt-1 text-xs text-muted">{{ ((qualified/total*100)|round|int) if total else 0 }}% of pipeline</p>
+    <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Companies</span>
+    <p class="mt-3 text-[28px] font-extrabold text-ink tabular-nums leading-none">{{ companies }}</p>
   </div>
   <div class="rounded-2xl bg-panel border border-edge p-5 shadow-card">
-    <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-amber-600 dark:text-amber-400">Warm · 50–59</span>
-    <p class="mt-3 text-[28px] font-extrabold text-ink tabular-nums leading-none">{{ warm }}</p>
+    <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Sources</span>
+    <p class="mt-3 text-[28px] font-extrabold text-ink tabular-nums leading-none">{{ sources_count }}</p>
   </div>
   <div class="rounded-2xl bg-panel border border-edge p-5 shadow-card">
-    <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Cold · &lt;50</span>
-    <p class="mt-3 text-[28px] font-extrabold text-ink tabular-nums leading-none">{{ cold }}</p>
+    <span class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Signals</span>
+    <p class="mt-3 text-[28px] font-extrabold text-ink tabular-nums leading-none">{{ signals_total }}</p>
   </div>
 </section>
 
@@ -32,34 +31,28 @@
 </div>
 {% else %}
 
-<!-- Row 1: quality mix + score distribution -->
+<!-- Row 1: leads by source (wide) + intent profile -->
 <div class="grid lg:grid-cols-3 gap-5 mb-5">
-  <div class="rounded-2xl bg-panel border border-edge p-5 shadow-card">
-    <h3 class="text-[13px] font-bold text-ink tracking-tight mb-3">Quality mix</h3>
-    <div class="relative h-72"><canvas id="qualityChart"></canvas></div>
-  </div>
   <div class="lg:col-span-2 rounded-2xl bg-panel border border-edge p-5 shadow-card">
-    <h3 class="text-[13px] font-bold text-ink tracking-tight mb-3">Score distribution</h3>
-    <div class="relative h-72"><canvas id="scoreChart"></canvas></div>
-  </div>
-</div>
-
-<!-- Row 2: sources + signal types -->
-<div class="grid lg:grid-cols-2 gap-5 mb-5">
-  <div class="rounded-2xl bg-panel border border-edge p-5 shadow-card">
     <h3 class="text-[13px] font-bold text-ink tracking-tight mb-3">Leads by source</h3>
     <div class="relative h-72"><canvas id="sourceChart"></canvas></div>
   </div>
   <div class="rounded-2xl bg-panel border border-edge p-5 shadow-card">
-    <h3 class="text-[13px] font-bold text-ink tracking-tight mb-3">Signal types</h3>
-    <div class="relative h-72"><canvas id="typeChart"></canvas></div>
+    <h3 class="text-[13px] font-bold text-ink tracking-tight mb-3">Intent profile</h3>
+    <div class="relative h-72"><canvas id="profileChart"></canvas></div>
   </div>
 </div>
 
-<!-- Row 3: top leads leaderboard -->
-<div class="rounded-2xl bg-panel border border-edge p-5 shadow-card">
-  <h3 class="text-[13px] font-bold text-ink tracking-tight mb-3">Top 10 leads by score</h3>
-  <div class="relative h-96"><canvas id="topChart"></canvas></div>
+<!-- Row 2: signal types + most-active companies -->
+<div class="grid lg:grid-cols-3 gap-5 mb-5">
+  <div class="rounded-2xl bg-panel border border-edge p-5 shadow-card">
+    <h3 class="text-[13px] font-bold text-ink tracking-tight mb-3">Signal types</h3>
+    <div class="relative h-80"><canvas id="typeChart"></canvas></div>
+  </div>
+  <div class="lg:col-span-2 rounded-2xl bg-panel border border-edge p-5 shadow-card">
+    <h3 class="text-[13px] font-bold text-ink tracking-tight mb-3">Most-active companies <span class="text-muted font-medium">· by evidence</span></h3>
+    <div class="relative h-80"><canvas id="topChart"></canvas></div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
@@ -75,34 +68,10 @@
 
     const bySource = {{ by_source | tojson }};
     const byType = {{ by_type | tojson }};
-    const scoreLabels = {{ score_labels | tojson }};
-    const scoreBuckets = {{ score_buckets | tojson }};
-    const topLeads = {{ top_leads | tojson }};
+    const profile = {{ signal_profile | tojson }};
+    const topCompanies = {{ top_companies | tojson }};
 
-    // 1) Quality mix — doughnut
-    new Chart(document.getElementById('qualityChart'), {
-      type: 'doughnut',
-      data: { labels: ['Qualified','Warm','Cold'],
-        datasets: [{ data: [{{ qualified }}, {{ warm }}, {{ cold }}],
-          backgroundColor: ['#10b981','#f59e0b','#94a3b8'], borderWidth: 0, hoverOffset: 6 }] },
-      options: { responsive: true, maintainAspectRatio: false, cutout: '62%',
-        plugins: { legend: { position: 'bottom', labels: { padding: 14, usePointStyle: true } } } }
-    });
-
-    // 2) Score distribution — bar (colored by tier)
-    new Chart(document.getElementById('scoreChart'), {
-      type: 'bar',
-      data: { labels: scoreLabels,
-        datasets: [{ label: 'Leads', data: scoreBuckets,
-          backgroundColor: ['#94a3b8','#94a3b8','#94a3b8','#f59e0b','#10b981','#10b981'],
-          borderRadius: 6, maxBarThickness: 64 }] },
-      options: { responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: { x: { grid: { display: false }, ticks: { color: tick } },
-                  y: { beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } } } }
-    });
-
-    // 3) Leads by source — bar
+    // 1) Leads by source — bar
     new Chart(document.getElementById('sourceChart'), {
       type: 'bar',
       data: { labels: bySource.map(x => x[0]),
@@ -115,7 +84,17 @@
                   y: { beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } } } }
     });
 
-    // 4) Signal types — doughnut
+    // 2) Intent profile — doughnut (Hiring / Funding / Social)
+    new Chart(document.getElementById('profileChart'), {
+      type: 'doughnut',
+      data: { labels: Object.keys(profile),
+        datasets: [{ data: Object.values(profile),
+          backgroundColor: ['#9a28ff','#10b981','#f59e0b'], borderWidth: 0, hoverOffset: 6 }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: '60%',
+        plugins: { legend: { position: 'bottom', labels: { padding: 14, usePointStyle: true } } } }
+    });
+
+    // 3) Signal types — doughnut
     new Chart(document.getElementById('typeChart'), {
       type: 'doughnut',
       data: { labels: byType.map(x => x[0].replace(/_/g, ' ')),
@@ -125,15 +104,15 @@
         plugins: { legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true } } } }
     });
 
-    // 5) Top 10 leads — horizontal bar
+    // 4) Most-active companies — horizontal bar (signal count)
     new Chart(document.getElementById('topChart'), {
       type: 'bar',
-      data: { labels: topLeads.map(l => l.name),
-        datasets: [{ label: 'Score', data: topLeads.map(l => l.score),
+      data: { labels: topCompanies.map(l => l.name),
+        datasets: [{ label: 'Signals', data: topCompanies.map(l => l.signals),
           backgroundColor: '#9a28ff', borderRadius: 6, maxBarThickness: 26 }] },
       options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
-        scales: { x: { beginAtZero: true, max: 100, grid: { color: grid }, ticks: { color: tick } },
+        scales: { x: { beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } },
                   y: { grid: { display: false }, ticks: { color: tick } } } }
     });
   })();

@@ -44,6 +44,21 @@ class Settings:
         # leads carry no enriched contact.
         self.APIFY_API_TOKEN: str | None = _get("APIFY_API_TOKEN", required=True)
         self.APOLLO_API_KEY: str | None = _get("APOLLO_API_KEY")
+        # Apollo enrichment knobs. The FREE-plan API allows Organization
+        # enrichment (firmographics: industry, size, LinkedIn, company phone) but
+        # GATES People Search/Match (decision-maker emails) — those need a paid
+        # plan, so the person lookup is OFF by default and auto-disables on a 403.
+        # Flip APOLLO_PEOPLE_ENABLED=true after upgrading to turn emails on.
+        self.APOLLO_PEOPLE_ENABLED: bool = _get("APOLLO_PEOPLE_ENABLED", "false").lower() in (  # type: ignore[union-attr]
+            "1", "true", "yes",
+        )
+        self.APOLLO_VERIFIED_ONLY: bool = _get("APOLLO_VERIFIED_ONLY", "true").lower() in (  # type: ignore[union-attr]
+            "1", "true", "yes",
+        )
+        self.APOLLO_MAX_ENRICH: int = int(_get("APOLLO_MAX_ENRICH", "50"))  # type: ignore[arg-type]
+        # Max decision-makers revealed per "Reveal contacts" click (each email
+        # reveal = 1 credit on a paid plan; names/titles are free).
+        self.APOLLO_MAX_PEOPLE: int = int(_get("APOLLO_MAX_PEOPLE", "5"))  # type: ignore[arg-type]
         self.SUPABASE_URL: str | None = _get("SUPABASE_URL")
         self.SUPABASE_SERVICE_KEY: str | None = _get("SUPABASE_SERVICE_KEY")
         # Anon (public) key — used for end-user auth (sign-in/up) via GoTrue.
@@ -75,9 +90,24 @@ class Settings:
         # Platforms the AI gate filters; everything else bypasses it untouched.
         self.AI_VERIFY_PLATFORMS: set[str] = {
             p.strip().lower()
-            for p in (_get("AI_VERIFY_PLATFORMS", "reddit,twitter,facebook") or "").split(",")
+            for p in (_get("AI_VERIFY_PLATFORMS", "reddit,twitter,facebook,hackernews") or "").split(",")
             if p.strip()
         }
+
+        # --- Real-time radar (Signals page watcher) ---
+        # Hacker News needs no key; Reddit joins automatically once its OAuth
+        # creds are set. Each cycle: fetch new posts -> AI verify -> store.
+        self.RADAR_ENABLED: bool = _get("RADAR_ENABLED", "true").lower() in (  # type: ignore[union-attr]
+            "1", "true", "yes",
+        )
+        self.RADAR_INTERVAL_SECONDS: int = int(_get("RADAR_INTERVAL_SECONDS", "60"))  # type: ignore[arg-type]
+        self.RADAR_VERTICAL: str = _get("RADAR_VERTICAL", "recruitment")  # type: ignore[assignment]
+
+        # --- Crunchbase source (startups vertical) ---
+        self.CRUNCHBASE_ACTOR_ID: str = _get(  # type: ignore[assignment]
+            "CRUNCHBASE_ACTOR_ID", "jungle_synthesizer/crunchbase-pro-companies-scraper"
+        )
+        self.CRUNCHBASE_MIN_AMOUNT_USD: int = int(_get("CRUNCHBASE_MIN_AMOUNT_USD", "0"))  # type: ignore[arg-type]
 
         # --- Infrastructure ---
         self.REDIS_URL: str = _get("REDIS_URL", "redis://localhost:6379")  # type: ignore[assignment]

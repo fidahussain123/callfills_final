@@ -1,0 +1,200 @@
+{# Animated lead map — renders every lead that has lat/lng as a drop-in pin.
+   Self-guarding: outputs nothing when no lead carries coordinates (so intent
+   verticals are unaffected). Reusable via optional vars:
+     map_id     — unique DOM id when included twice on one page (default "leads-map")
+     map_height — CSS height (default "380px")
+   Pins are colored by score tier (emerald ≥70, amber ≥50, slate below) and open
+   a mini business card: rating, phone, website, address + Google Maps link. #}
+{% set zone = geo_zone | default(none) %}
+{% set geo = [] %}
+{% for l in leads %}{% if l.lat and l.lng %}{% set _ = geo.append({
+  "name": l.company_name, "lat": l.lat, "lng": l.lng, "score": l.score or 0,
+  "rating": l.rating, "reviews": l.review_count, "phone": l.phone,
+  "website": l.website, "address": l.address, "maps": l.maps_url,
+  "category": l.category}) %}{% endif %}{% endfor %}
+{% if geo or zone %}
+{% set mid = map_id or "leads-map" %}
+<div class="rounded-xl bg-panel border border-edge overflow-hidden shadow-card mb-4">
+  <div class="px-5 py-3 border-b border-edge flex items-center justify-between gap-3">
+    <div class="flex items-center gap-2.5 min-w-0">
+      <span class="grid place-items-center h-7 w-7 rounded-lg bg-brand/10 text-brand dark:text-brandlight shrink-0">
+        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 17s-5.5-4.6-5.5-8.5a5.5 5.5 0 1 1 11 0C15.5 12.4 10 17 10 17Z"/><circle cx="10" cy="8.5" r="2"/></svg>
+      </span>
+      <div class="min-w-0">
+        <h3 class="text-[14px] font-bold text-ink tracking-tight leading-tight">Lead map</h3>
+        <p class="text-[11px] text-muted truncate"><span class="font-semibold text-ink tabular-nums">{{ geo|length }}</span> business{{ '' if geo|length == 1 else 'es' }} located{% if zone %} · <span class="text-brand dark:text-brandlight font-medium">drawn zone</span>{% endif %}</p>
+      </div>
+    </div>
+  </div>
+  <div id="{{ mid }}" class="w-full relative z-0" style="height: {{ map_height or 'clamp(240px, 45vh, 380px)' }}"></div>
+</div>
+
+<style>
+  /* pin: animated drop-in wrapper + teardrop body */
+  @keyframes cfPinDrop {
+    0%   { transform: translateY(-26px) scale(.4); opacity: 0; }
+    70%  { transform: translateY(3px) scale(1.06); opacity: 1; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  @keyframes cfPinPulse {
+    0%   { transform: scale(.6); opacity: .5; }
+    100% { transform: scale(2.4); opacity: 0; }
+  }
+  .cf-pin-wrap { position: relative; display: block; width: 24px; height: 24px;
+    animation: cfPinDrop .45s cubic-bezier(.2,.85,.35,1.25) both; }
+  .cf-pin { position: absolute; inset: 0; border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg); border: 2px solid #fff;
+    box-shadow: 0 3px 8px rgba(15,23,42,.35); }
+  .cf-pin::after { content: ""; position: absolute; inset: 6px; background: #fff; border-radius: 50%; }
+  .cf-pin--q { background: #10b981; } .cf-pin--w { background: #f59e0b; } .cf-pin--c { background: #94a3b8; } .cf-pin--b { background: #9a28ff; }
+  .cf-pin-ring { position: absolute; left: 50%; bottom: -3px; width: 18px; height: 18px;
+    margin-left: -9px; border-radius: 9999px; pointer-events: none;
+    animation: cfPinPulse .9s ease-out 1 both; }
+  .cf-pin-ring--q { background: rgba(16,185,129,.35); } .cf-pin-ring--w { background: rgba(245,158,11,.35); } .cf-pin-ring--c { background: rgba(148,163,184,.35); } .cf-pin-ring--b { background: rgba(154,40,255,.35); }
+  /* popup card matches the dashboard panels */
+  .cf-map .leaflet-popup-content-wrapper { border-radius: 12px; box-shadow: 0 12px 32px rgba(15,23,42,.18);
+    font-family: inherit; }
+  .cf-map .leaflet-popup-content { margin: 12px 14px; line-height: 1.45; min-width: 190px; }
+  .cf-map .leaflet-container a.leaflet-popup-close-button { padding: 6px 8px 0 0; }
+  /* touch-friendly zoom buttons */
+  .cf-map .leaflet-control-zoom a { width: 34px; height: 34px; line-height: 32px; font-size: 19px; }
+  /* dark mode: invert the tiles + dark popup (covers media + class strategies) */
+  @media (prefers-color-scheme: dark) {
+    .cf-map .leaflet-tile { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.7); }
+    .cf-map .leaflet-popup-content-wrapper, .cf-map .leaflet-popup-tip { background: #1e293b; color: #e2e8f0; }
+  }
+  .dark .cf-map .leaflet-tile { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.7); }
+  .dark .cf-map .leaflet-popup-content-wrapper, .dark .cf-map .leaflet-popup-tip { background: #1e293b; color: #e2e8f0; }
+</style>
+
+<script type="application/json" id="{{ mid }}-data">{{ geo | tojson }}</script>
+<script type="application/json" id="{{ mid }}-zone">{{ zone | tojson }}</script>
+<script>
+(function () {
+  var MID = {{ mid | tojson }};
+  var el = document.getElementById(MID);
+  if (!el) return;
+  var LEADS = JSON.parse(document.getElementById(MID + "-data").textContent);
+  var ZONE = JSON.parse(document.getElementById(MID + "-zone").textContent);
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function tier(score) { return "b"; }  // single brand-colored pin (no score tiers)
+
+  // The gesture plugin's UMD build exposes `leafletGestureHandling` and does
+  // NOT self-register with Leaflet — wire the handler in ourselves.
+  function ensureGesture() {
+    if (!window.L || !L.Map) return false;
+    if (L.Map.prototype.options && "gestureHandling" in L.Map.prototype.options) return true;
+    var GH = (window.leafletGestureHandling && window.leafletGestureHandling.GestureHandling)
+          || window.GestureHandling || L.GestureHandling;
+    if (!GH) return false;
+    L.Map.mergeOptions({ gestureHandling: false });
+    L.Map.addInitHook("addHandler", "gestureHandling", GH);
+    return true;
+  }
+
+  function popupHtml(b) {
+    var h = '<div style="font-size:13px">';
+    h += '<div style="font-weight:700;font-size:14px;margin-bottom:2px">' + esc(b.name) + "</div>";
+    var meta = [];
+    if (b.category) meta.push(esc(b.category));
+    if (b.rating) meta.push("⭐ " + esc(b.rating) + (b.reviews ? " (" + esc(b.reviews) + ")" : ""));
+    if (meta.length) h += '<div style="opacity:.75;margin-bottom:6px">' + meta.join(" · ") + "</div>";
+    if (b.phone) h += '<div>📞 <a href="tel:' + esc(b.phone) + '">' + esc(b.phone) + "</a></div>";
+    h += b.website
+      ? '<div>🌐 <a href="' + esc(b.website) + '" target="_blank" rel="noopener">' + esc(b.website).replace(/^https?:\/\//, "").slice(0, 34) + "</a></div>"
+      : '<div style="color:#e11d48;font-weight:600">no website → prime prospect</div>';
+    if (b.address) h += '<div style="opacity:.7;margin-top:4px;font-size:12px">📍 ' + esc(b.address).slice(0, 90) + "</div>";
+    if (b.maps) h += '<div style="margin-top:6px"><a href="' + esc(b.maps) + '" target="_blank" rel="noopener" style="font-weight:600">Open in Google Maps →</a></div>';
+    return h + "</div>";
+  }
+
+  function init() {
+    // HTMX can re-swap this partial — tear down any previous instance first.
+    window._cfMaps = window._cfMaps || {};
+    if (window._cfMaps[MID]) { try { window._cfMaps[MID].remove(); } catch (e) {} }
+    el.classList.add("cf-map");
+
+    // Cooperative gestures (plugin): pinch to zoom, two-finger pan on touch,
+    // Ctrl/⌘+scroll on desktop — the page never gets scroll-jacked. Falls back
+    // to buttons + pinch if the plugin CDN is unavailable.
+    var map = L.map(el, {
+      gestureHandling: ensureGesture(),
+      scrollWheelZoom: false,
+      touchZoom: true,
+      tap: true,
+      zoomSnap: 0.5
+    });
+    window._cfMaps[MID] = map;
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+
+    // The pipeline's drawn search zone, outlined under the pins.
+    var zoneLayer = null;
+    if (ZONE) {
+      zoneLayer = L.geoJSON(ZONE, {
+        style: { color: "#9a28ff", weight: 2, dashArray: "6 6", fillColor: "#9a28ff", fillOpacity: .06 }
+      }).addTo(map);
+    }
+
+    var pts = LEADS.map(function (b) { return [b.lat, b.lng]; });
+    if (pts.length === 1 && !zoneLayer) {
+      map.setView(pts[0], 14);
+    } else {
+      var bounds = pts.length ? L.latLngBounds(pts) : null;
+      if (zoneLayer) bounds = bounds ? bounds.extend(zoneLayer.getBounds()) : zoneLayer.getBounds();
+      if (bounds) map.fitBounds(bounds, { padding: [36, 36] });
+      else map.setView([12.9716, 77.5946], 11);
+    }
+
+    // staggered drop-in: the "scrape reveals the city" animation
+    LEADS.forEach(function (b, i) {
+      setTimeout(function () {
+        var t = tier(b.score);
+        var icon = L.divIcon({
+          className: "",
+          html: '<span class="cf-pin-wrap"><span class="cf-pin cf-pin--' + t + '"></span><span class="cf-pin-ring cf-pin-ring--' + t + '"></span></span>',
+          iconSize: [24, 24], iconAnchor: [12, 24], popupAnchor: [0, -22]
+        });
+        L.marker([b.lat, b.lng], { icon: icon, title: b.name })
+          .addTo(map)
+          .bindTooltip(esc(b.name), { direction: "top", offset: [0, -22] })
+          .bindPopup(popupHtml(b));
+      }, Math.min(i * 70, 4200));
+    });
+  }
+
+  // Lazy-load Leaflet + the gesture plugin once; safe under HTMX swaps and
+  // double-includes. init() runs even if the plugin fails (graceful fallback).
+  function loadCss(id, href) {
+    if (document.getElementById(id)) return;
+    var l = document.createElement("link"); l.id = id; l.rel = "stylesheet"; l.href = href;
+    document.head.appendChild(l);
+  }
+  function loadJs(id, src, cb) {
+    var ex = document.getElementById(id);
+    if (ex) {
+      if (ex.dataset.loaded === "1") { cb(); }
+      else { ex.addEventListener("load", cb); ex.addEventListener("error", cb); }
+      return;
+    }
+    var s = document.createElement("script"); s.id = id; s.src = src;
+    s.onload = function () { s.dataset.loaded = "1"; cb(); };
+    s.onerror = function () { s.dataset.loaded = "1"; cb(); };
+    document.head.appendChild(s);
+  }
+  loadCss("cf-leaflet-css", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css");
+  loadCss("cf-leaflet-gh-css", "https://unpkg.com/leaflet-gesture-handling@1.2.2/dist/leaflet-gesture-handling.min.css");
+  if (window.L && ensureGesture()) { init(); return; }
+  loadJs("cf-leaflet-js", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js", function () {
+    if (!window.L) return; // Leaflet CDN unavailable
+    loadJs("cf-leaflet-gh-js", "https://unpkg.com/leaflet-gesture-handling@1.2.2/dist/leaflet-gesture-handling.min.js", init);
+  });
+})();
+</script>
+{% endif %}

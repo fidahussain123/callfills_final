@@ -58,6 +58,16 @@
       var dark = document.documentElement.classList.toggle('dark');
       try { localStorage.setItem('cf-theme', dark ? 'dark' : 'light'); } catch (e) {}
     }
+    /* Mobile off-canvas sidebar (no-op on lg+, where it is always visible). */
+    function cfSidebar(open) {
+      var sb = document.getElementById('cf-sidebar');
+      var ov = document.getElementById('cf-sidebar-overlay');
+      if (!sb || !ov) return;
+      var show = (open === undefined) ? sb.classList.contains('-translate-x-full') : open;
+      sb.classList.toggle('-translate-x-full', !show);
+      ov.classList.toggle('hidden', !show);
+      document.body.classList.toggle('overflow-hidden', show);
+    }
   </script>
   <style>
     :root {
@@ -94,13 +104,29 @@
       content: ""; position: absolute; left: -12px; top: 50%; transform: translateY(-50%);
       height: 16px; width: 3px; border-radius: 0 3px 3px 0; background: #9a28ff;
     }
+    /* Mobile: 16px form text stops iOS Safari from auto-zooming on focus. */
+    @media (max-width: 640px) {
+      input, select, textarea { font-size: 16px !important; }
+    }
+    /* HTMX busy state: swap a button's label for its loading hint mid-request. */
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: inline; }
+    .htmx-request .htmx-indicator-hide { display: none; }
+    .htmx-request.htmx-request { opacity: .85; }
   </style>
 </head>
 <body class="h-full text-slate-600 dark:text-slate-300 antialiased cf-grid">
   <div class="relative z-10 min-h-full flex">
 
     <!-- ───────────────────────── Sidebar ───────────────────────── -->
-    <aside class="hidden lg:flex w-[248px] shrink-0 flex-col border-r border-edge bg-panel sticky top-0 h-screen">
+    <!-- Mobile overlay (tap to close) -->
+    <div id="cf-sidebar-overlay" class="fixed inset-0 z-30 bg-slate-900/50 backdrop-blur-sm hidden lg:!hidden" onclick="cfSidebar(false)"></div>
+
+    <!-- One sidebar: off-canvas drawer on mobile, sticky column on lg+ -->
+    <aside id="cf-sidebar"
+           class="fixed inset-y-0 left-0 z-40 flex h-screen w-[272px] max-w-[85vw] shrink-0 flex-col border-r border-edge bg-panel
+                  -translate-x-full transition-transform duration-300 ease-out
+                  lg:translate-x-0 lg:sticky lg:top-0 lg:w-[248px] lg:max-w-none lg:transition-none">
       <!-- Brand -->
       <div class="px-5 h-16 flex items-center gap-3 border-b border-edge">
         <div class="h-9 w-9 rounded-xl bg-brand-gradient grid place-items-center shadow-brand shrink-0">
@@ -110,6 +136,8 @@
           <h1 class="font-jakarta text-[15px] font-extrabold tracking-tight"><span class="text-ink">Call</span><span class="text-brand dark:text-brandlight">fills</span></h1>
           <p class="text-[10.5px] text-muted font-medium mt-1 tracking-wide">LEAD INTELLIGENCE</p>
         </div>
+        <button type="button" onclick="cfSidebar(false)" aria-label="Close menu"
+                class="lg:hidden ml-auto h-8 w-8 grid place-items-center rounded-lg text-muted hover:text-ink hover:bg-surface text-2xl leading-none transition">×</button>
       </div>
 
       <!-- Search -->
@@ -242,10 +270,15 @@
     <div class="flex-1 min-w-0 flex flex-col">
       <!-- Top bar -->
       <header class="sticky top-0 z-20 border-b border-edge bg-panel/80 backdrop-blur-xl">
-        <div class="px-5 lg:px-8 h-16 flex items-center justify-between gap-4">
-          <div class="flex items-center gap-3 min-w-0">
+        <div class="px-4 sm:px-5 lg:px-8 h-16 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <!-- Mobile menu (hamburger) -->
+            <button type="button" onclick="cfSidebar(true)" aria-label="Open menu"
+                    class="lg:hidden h-9 w-9 grid place-items-center rounded-lg border border-edge bg-panel text-muted hover:text-brand dark:hover:text-brandlight hover:border-brand/40 transition shrink-0">
+              <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 6h13M3.5 10h13M3.5 14h13" stroke-linecap="round"/></svg>
+            </button>
             <!-- Mobile brand mark -->
-            <div class="lg:hidden h-9 w-9 rounded-lg bg-brand-gradient grid place-items-center shadow-brand shrink-0">
+            <div class="lg:hidden h-9 w-9 rounded-lg bg-brand-gradient grid place-items-center shadow-brand shrink-0 max-[380px]:hidden">
               <img src="/static/callfills-mark.png" alt="CALLFILLS" class="h-4 w-4" />
             </div>
             <div class="min-w-0">
@@ -265,13 +298,13 @@
         </div>
       </header>
 
-      <main class="flex-1 px-5 lg:px-8 py-6 lg:py-8 w-full">
+      <main class="flex-1 px-4 sm:px-5 lg:px-8 py-5 sm:py-6 lg:py-8 w-full">
         <div class="max-w-[1320px] mx-auto">{% block content %}{% endblock %}</div>
       </main>
     </div>
   </div>
 
-  <div class="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+  <div class="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 flex flex-col items-end gap-3 max-w-[calc(100vw-2rem)]">
     <div id="run-panel"></div>
     <div id="toast"></div>
   </div>

@@ -1,0 +1,63 @@
+# Startups vertical — funded &/or hiring startups, plotted on the map by HQ city.
+#
+# Same engine as recruitment/local_business, re-aimed at startups. The strongest
+# leads are BOTH recently funded AND actively hiring. Sources are structured
+# (Wellfound hiring + funding RSS), so no AI junk-gate is needed; the offline
+# geocoder turns each company's city into a map pin.
+
+name: startups
+display_name: "Startups (funded & hiring)"
+description: >
+  Recently funded and/or actively hiring startups — the hottest are both. Pulled
+  from Wellfound (VC-backed hiring) and funding news (RSS), grouped per company,
+  scored, and plotted on the map by HQ city.
+
+sources:
+  - wellfound
+  - rss_feeds
+  # - crunchbase   # built & wired, OFF by default: current Apify actors are
+  #                  Cloudflare-blocked (verified 2026-06-10) and charge $0.10
+  #                  even on a failed start. Enable per-pipeline via the Tools
+  #                  toggle, or here once a reliable actor exists
+  #                  (CRUNCHBASE_ACTOR_ID is env-swappable). RSS covers funding.
+
+# Decision-maker roles to enrich once Apollo is on (Phase 3).
+target_roles:
+  - Founder
+  - Co-Founder
+  - CEO
+  - CTO
+  - VP Engineering
+  - Head of Talent
+
+signal_keywords:
+  - raised
+  - seed
+  - series a
+  - series b
+  - pre-seed
+  - hiring
+  - engineer
+
+# Funding is the hero here; the gold standard is funded AND hiring.
+scoring:
+  both_hiring_and_funded: 40
+  funding_recency_0_30_days: 50
+  funding_recency_31_60: 35
+  funding_recency_61_90: 20
+  hiring_recency_0_10_days: 22
+  hiring_recency_11_20_days: 14
+  hiring_role_count_5_plus: 28
+  hiring_role_count_2_4: 16
+  signal_funding_round: 30
+  signal_from_wellfound: 12
+  contact_email_found: 10     # credited once Apollo enrichment is on
+  multi_platform_signal: 15   # on both Wellfound AND funding news = strong
+
+min_score: 55
+
+# Funding stays relevant longer than a job post; allow a wider window.
+freshness_days: 90
+
+# No company pre-filtering (the quality gate still drops mega-corps/staffing).
+filters: {}

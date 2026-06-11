@@ -290,7 +290,11 @@ _DESCRIPTOR_WORDS = {
     "indian", "india", "india's", "asia's", "world's", "country's", "video",
     "generation", "perfume", "beauty", "skincare", "logistics", "mobility",
     "gaming", "crypto", "web3", "online", "digital", "tech", "software",
+    "funding", "round",  # title-phrase words ("X Funding Round: …") — never a name part
 }
+
+# Trailing title words to strip off an extracted name ("Sarvam AI Funding Round" → "Sarvam AI").
+_TRAILING_JUNK = {"funding", "round"}
 
 # If the WHOLE extracted name is one of these, it's not a real company.
 _NON_COMPANY = {
@@ -306,7 +310,7 @@ _AGGREGATE_RE = re.compile(
     r"(^\s*between\b|\bas many as\b|\bthis week\b|funding and acquisitions|"
     r"\b\d+\s+(?:indian\s+)?start-?ups?\b|"
     r"\bstart-?ups?\s+(?:raised|raise|rake|raked|mopped|garnered|secured)\b|"
-    r"weekly\s+funding|funding\s+round-?up|funding\s+tracker|\bdeal\s+book\b)",
+    r"weekly\s+funding|funding\s+round-?up|funding\s+wrap|funding\s+tracker|\bdeal\s+book\b)",
     re.IGNORECASE,
 )
 
@@ -318,16 +322,67 @@ def _is_descriptor(low: str) -> bool:
     return low in _DESCRIPTOR_WORDS or bool(_AFFIX_RE.match(low))
 
 
+def _name_from_subject(subject: str) -> Optional[str]:
+    """Collect the company name from the subject phrase before the funding verb.
+
+    A descriptor word (e.g. "Startup", "AI") only ends the run *after* a real
+    proper noun has been seen, so names ending in a sector word ("TrueFan AI")
+    survive while leading descriptors ("AI Startup TrueFan") are stripped.
+    """
+    subject = subject.strip(" ,–-:")
+    if not subject:
+        return None
+    tokens = subject.split()
+    name_tokens: list[str] = []  # collected right-to-left
+    seen_strong = False
+    for tok in reversed(tokens):
+        bare = tok.strip(_QUOTE_CHARS)
+        if not bare:
+            continue
+        low = bare.lower().rstrip(".")
+        strong = (not _is_descriptor(low)) and any(c.isupper() for c in bare)
+        if _is_descriptor(low):
+            if seen_strong:
+                break
+            name_tokens.append(bare)
+            if len(name_tokens) >= 4:
+                break
+            continue
+        if name_tokens and not strong and bare[:1].islower():
+            break
+        if strong:
+            seen_strong = True
+        name_tokens.append(bare)
+        if len(name_tokens) >= 4:
+            break
+
+    if not seen_strong:
+        if len(tokens) == 1:
+            only = tokens[0].strip(_QUOTE_CHARS)
+            if only.lower() not in _DESCRIPTOR_WORDS and only.lower() not in _NON_COMPANY and len(only) > 1:
+                return only
+        return None
+
+    parts = " ".join(reversed(name_tokens)).strip(_QUOTE_CHARS).split()
+    while parts and parts[0].lower() in _DESCRIPTOR_WORDS:        # trim leading descriptors
+        parts.pop(0)
+    while parts and parts[-1].lower().rstrip(".:,") in _TRAILING_JUNK:  # trim trailing "Funding Round"
+        parts.pop()
+    name = " ".join(parts).strip(_QUOTE_CHARS)
+    if not name or name.lower() in _NON_COMPANY or len(name) < 2:
+        return None
+    return name
+
+
 def extract_funding_company(headline: str) -> Optional[str]:
     """Extract the funded company from a funding-news headline.
 
-    Strategy: strip editorial tags, reject market round-ups, split on the
-    funding verb and keep the subject (which excludes investors named after
-    "from"), then collect the trailing run of name tokens. A descriptor word
-    (e.g. "Startup", "AI") only ends the run *after* a real proper noun has been
-    seen, so names ending in a sector word ("TrueFan AI") survive while leading
-    descriptors ("AI Startup TrueFan") are stripped. Returns ``None`` when the
-    headline is not about a single company raising, so the item is dropped.
+    Strips editorial tags, rejects market round-ups (incl. "Funding Wrap"),
+    splits on the funding verb to isolate the subject (excluding investors named
+    after "from"), and pulls the company name. Title-style headlines where the
+    company precedes a colon ("TIST Media: India-Based Startup Raises…",
+    "Sarvam AI Funding Round: $350M Raise…") are handled by trying the pre-colon
+    segment first. Returns ``None`` when it's not a single company raising.
     """
     if not headline:
         return None
@@ -342,44 +397,40 @@ def extract_funding_company(headline: str) -> Optional[str]:
     if not subject:
         return None
 
-    tokens = subject.split()
-    name_tokens: list[str] = []  # collected right-to-left
-    seen_strong = False
-    for tok in reversed(tokens):
-        bare = tok.strip(_QUOTE_CHARS)
-        if not bare:
-            continue
-        low = bare.lower().rstrip(".")
-        # A "strong" token is a proper-noun-ish name part (has an uppercase
-        # letter and isn't a sector word) — the anchor of the company name.
-        strong = (not _is_descriptor(low)) and any(c.isupper() for c in bare)
-        if _is_descriptor(low):
-            if seen_strong:
-                break  # leading descriptor reached ("AI Startup | TrueFan")
-            name_tokens.append(bare)  # tentative trailing part ("TrueFan | AI")
-            if len(name_tokens) >= 4:
-                break
-            continue
-        if name_tokens and not strong and bare[:1].islower():
-            break  # lowercase connective after the name began
-        if strong:
-            seen_strong = True
-        name_tokens.append(bare)
-        if len(name_tokens) >= 4:
-            break
+    # Title-style colon: the company usually sits before it — try that first,
+    # but only accept it if it parses to a real name (so "India: … Immuneel
+    # Therapeutics raises" still falls through to the full subject).
+    if ":" in subject:
+        pre = _name_from_subject(subject.split(":", 1)[0])
+        if pre:
+            return pre
+    return _name_from_subject(subject)
 
-    if not seen_strong:
-        # Single lowercase-initial brand (e.g. "ixigo raises …").
-        if len(tokens) == 1:
-            only = tokens[0].strip(_QUOTE_CHARS)
-            if only.lower() not in _DESCRIPTOR_WORDS and only.lower() not in _NON_COMPANY and len(only) > 1:
-                return only
-        return None
 
-    parts = [p for p in " ".join(reversed(name_tokens)).strip(_QUOTE_CHARS).split()]
-    while parts and parts[0].lower() in _DESCRIPTOR_WORDS:  # trim any leading descriptors
-        parts.pop(0)
-    name = " ".join(parts)
-    if not name or name.lower() in _NON_COMPANY or len(name) < 2:
+# HQ city sits next to "based" / "headquartered" in funding articles
+# ("Bengaluru-based X", "Hyderabad headquartered Y", "headquartered in Pune").
+_HQ_RE = re.compile(
+    r"\b([A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)?)[\s-]{0,3}(?:based|headquartered|head-quartered)\b"
+    r"|(?:based|headquartered)\s+(?:in|out\s+of)\s+([A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)?)"
+)
+
+
+def extract_hq_city(text: str) -> Optional[str]:
+    """Return a company's HQ city from funding-article text, or ``None``.
+
+    Only accepts cities the offline geocoder recognizes, and only when tied to an
+    HQ phrase ("Bengaluru-based", "headquartered in Pune") — so incidental
+    mentions ("IIT Delhi alumnus", "India-based", an investor's city) are
+    ignored rather than dropping a false map pin.
+    """
+    if not text:
         return None
-    return name
+    from processors.geocoder import geocode_city
+
+    clean = re.sub(r"<[^>]+>", " ", text)
+    for match in _HQ_RE.finditer(clean):
+        cand = (match.group(1) or match.group(2) or "").strip()
+        cand = re.sub(r"^(?:The|A|An|This|Its|Their)\s+", "", cand, flags=re.IGNORECASE).strip()
+        if cand and geocode_city(cand):
+            return cand
+    return None

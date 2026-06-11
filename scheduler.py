@@ -36,6 +36,16 @@ async def _digest_job() -> None:
         _log_next_run("digest")
 
 
+async def _radar_job() -> None:
+    """Scheduled job wrapper for the real-time Signals radar."""
+    try:
+        from radar import run_radar_cycle
+
+        await run_radar_cycle()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Radar cycle failed: %s", exc)
+
+
 def _log_next_run(job_id: str) -> None:
     """Log the next scheduled fire time for a job, if the scheduler is running."""
     if _scheduler is None:
@@ -68,11 +78,21 @@ def start_scheduler() -> AsyncIOScheduler:
         max_instances=1,
         coalesce=True,
     )
+    if settings.RADAR_ENABLED:
+        _scheduler.add_job(
+            _radar_job,
+            trigger=IntervalTrigger(seconds=settings.RADAR_INTERVAL_SECONDS),
+            id="radar",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
     _scheduler.start()
     logger.info(
-        "Scheduler started: pipeline every %dh, digest daily 08:00 %s",
+        "Scheduler started: pipeline every %dh, digest daily 08:00 %s, radar %s",
         settings.PIPELINE_INTERVAL_HRS,
         settings.DIGEST_TIMEZONE,
+        f"every {settings.RADAR_INTERVAL_SECONDS}s" if settings.RADAR_ENABLED else "off",
     )
     return _scheduler
 

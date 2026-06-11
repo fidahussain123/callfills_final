@@ -45,8 +45,8 @@
     <p class="mt-2 text-base font-bold text-ink capitalize leading-tight">{{ client.vertical.replace('_',' ') }}</p>
   </div>
   <div class="rounded-2xl bg-panel border border-edge p-4 shadow-card">
-    <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Min score</p>
-    <p class="mt-2 text-[26px] font-extrabold text-ink tabular-nums leading-none">{{ client.min_score }}</p>
+    <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Tools</p>
+    <p class="mt-2 text-[26px] font-extrabold text-ink tabular-nums leading-none">{{ (f.sources or [])|length or '—' }}</p>
   </div>
   <div class="rounded-2xl bg-panel border border-edge p-4 shadow-card">
     <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Assigned</p>
@@ -64,9 +64,6 @@
       <dl class="space-y-3 text-sm">
         <div class="flex justify-between gap-3">
           <dt class="text-muted">Vertical</dt><dd class="text-ink font-medium capitalize">{{ client.vertical.replace('_',' ') }}</dd>
-        </div>
-        <div class="flex justify-between gap-3">
-          <dt class="text-muted">Min score</dt><dd class="text-ink font-medium tabular-nums">{{ client.min_score }}</dd>
         </div>
         <div>
           <dt class="text-muted mb-1.5">Industries</dt>
@@ -87,6 +84,10 @@
         <div>
           <dt class="text-muted mb-1.5">Signal focus</dt>
           <dd class="flex flex-wrap gap-1">{% for t in (f.signal_types or []) %}<span class="rounded-md bg-brandlight/15 text-brandmed dark:text-brandlight ring-1 ring-brandlight/30 text-[11px] px-2 py-0.5">{{ t.replace('_',' ') }}</span>{% else %}<span class="text-[12px] text-muted">any</span>{% endfor %}</dd>
+        </div>
+        <div>
+          <dt class="text-muted mb-1.5">Tools</dt>
+          <dd class="flex flex-wrap gap-1">{% for s in (f.sources or []) %}<span class="rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/25 text-[11px] px-2 py-0.5">⚙ {{ s.replace('_',' ') }}</span>{% else %}<span class="text-[12px] text-muted">vertical defaults</span>{% endfor %}</dd>
         </div>
       </dl>
     </div>
@@ -121,6 +122,10 @@
 
   <!-- Right: this pipeline's leads -->
   <div class="lg:col-span-2">
+    {# Animated map for geolocated (Google Maps) pipelines — hidden otherwise #}
+    {% set map_id = "pipeline-map" %}{% set map_height = "300px" %}
+    {% set geo_zone = (client.filters or {}).get("custom_geolocation") %}
+    {% include "partials/leads_map.html" %}
     <div class="rounded-xl bg-panel border border-edge overflow-hidden shadow-card">
       <div class="px-5 py-3 border-b border-edge flex items-center justify-between">
         <h3 class="text-[15px] font-bold text-ink tracking-tight">Leads in this pipeline</h3>

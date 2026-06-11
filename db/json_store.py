@@ -56,6 +56,35 @@ def _has_existing_leads() -> bool:
         return False
 
 
+def _merge_leads_by_vertical(
+    leads: list[dict[str, Any]], stats: dict[str, Any] | None
+) -> list[dict[str, Any]]:
+    """Refresh only the current run's vertical in the shared pool.
+
+    The dashboard reads a single ``leads.json`` pool shared across verticals. A
+    run for vertical *V* should replace *V*'s leads without wiping leads from
+    other verticals (e.g. a ``local_business`` run must not erase recruitment).
+    """
+    vertical = (stats or {}).get("vertical")
+    if not vertical:
+        return leads
+    try:
+        existing = read_json("leads.json")
+    except Exception:  # noqa: BLE001 - missing/corrupt → just write the new run
+        return leads
+    if not isinstance(existing, list):
+        return leads
+    others = [
+        lead for lead in existing
+        if isinstance(lead, dict) and lead.get("vertical") != vertical
+    ]
+    logger.info(
+        "Merged pool: kept %d other-vertical leads + %d new '%s' leads",
+        len(others), len(leads), vertical,
+    )
+    return others + leads
+
+
 def save_run(
     signals: list[dict[str, Any]],
     companies: list[dict[str, Any]],
@@ -95,7 +124,7 @@ def save_run(
         return paths
 
     paths["latest"] = write_json("latest.json", run)
-    paths["leads"] = write_json("leads.json", leads)
+    paths["leads"] = write_json("leads.json", _merge_leads_by_vertical(leads, stats))
     paths["companies"] = write_json("companies.json", companies)
     paths["signals"] = write_json("signals.json", signals)
     return paths

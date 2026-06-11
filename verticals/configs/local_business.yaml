@@ -1,0 +1,43 @@
+# Local business lead-lists vertical — Google Maps.
+#
+# A different product from the intent verticals: each lead is a real, contactable
+# local business (barber, gym, dentist, restaurant…) pulled from Google Maps for
+# an agency's outreach. The search is targeted per pipeline — a pipeline's ICP
+# sets `keywords` (the category, e.g. "barber") and `cities` (the location).
+
+name: local_business
+display_name: "Local Business Lists"
+description: >
+  Real local businesses pulled from Google Maps — each with a phone, website,
+  rating, reviews and address, ready for an agency to call. Set the category
+  (keywords) and city per pipeline; e.g. "barbers in Bangalore".
+
+sources:
+  - google_maps
+
+target_roles: []
+signal_keywords: []
+
+# Scoring tuned for agency value rather than hiring/funding intent. A business
+# WITHOUT a website scores highest (the prime prospect for a web/marketing
+# agency); good ratings + review volume add confidence it's an active business.
+scoring:
+  signal_local_business: 40   # base: it's a real, contactable business
+  has_phone: 15
+  no_website: 25              # 🔥 prime prospect for a web-design agency
+  has_website: 8
+  has_email_listed: 12
+  rating_4_plus: 10
+  reviews_20_plus: 10
+
+min_score: 40
+
+# Businesses don't go stale like a job post, so the freshness gate is effectively
+# disabled for this vertical.
+freshness_days: 3650
+
+# Default search (overridden per pipeline via the ICP's keywords/cities).
+filters:
+  categories: [barber]
+  cities: [Bangalore]
+  max_results: 40

@@ -39,18 +39,11 @@
       <textarea name="description" rows="2" placeholder="Funded fintech startups in Bangalore hiring engineers — sold to recruiting agencies."
                 class="w-full rounded-lg bg-canvas border border-edge px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand resize-none"></textarea>
     </div>
-    <div class="grid grid-cols-2 gap-3">
-      <div>
-        <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">Vertical</label>
-        <select name="vertical" class="w-full rounded-lg bg-canvas border border-edge px-3 py-2.5 text-sm text-slate-700 dark:text-slate-200 capitalize focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand">
-          {% for v in verticals %}<option value="{{ v }}">{{ v.replace('_',' ') }}</option>{% endfor %}
-        </select>
-      </div>
-      <div>
-        <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">Min score</label>
-        <input type="number" name="min_score" value="50" min="0" max="100"
-               class="w-full rounded-lg bg-canvas border border-edge px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
-      </div>
+    <div>
+      <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">Vertical</label>
+      <select name="vertical" class="w-full rounded-lg bg-canvas border border-edge px-3 py-2.5 text-sm text-slate-700 dark:text-slate-200 capitalize focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand">
+        {% for v in verticals %}<option value="{{ v }}">{{ v.replace('_',' ') }}</option>{% endfor %}
+      </select>
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div>
@@ -81,6 +74,57 @@
         </div>
       </div>
     </div>
+    {# Draw-a-zone map for Google Maps pipelines (hidden for intent verticals) #}
+    {% include "partials/zone_picker.html" %}
+
+    {# Per-pipeline tool toggles — whatever's on is exactly what this pipeline fetches #}
+    {% macro tool_icon(key) %}
+    {%- set tile = "grid place-items-center h-7 w-7 rounded-lg text-white shrink-0 ring-1 ring-black/5 dark:ring-white/15" -%}
+    {%- if key == 'google_maps' -%}
+    <span class="{{ tile }}" style="background:#34A853"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a5.5 5.5 0 0 1 5.5 5.5C15.5 11.4 10 18 10 18S4.5 11.4 4.5 7.5A5.5 5.5 0 0 1 10 2Zm0 3.4a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2Z"/></svg></span>
+    {%- elif key == 'wellfound' -%}
+    <span class="{{ tile }} text-[12px] font-extrabold" style="background:#0c0c0c">W:</span>
+    {%- elif key == 'crunchbase' -%}
+    <span class="{{ tile }} text-[11px] font-extrabold lowercase" style="background:#146AFF">cb</span>
+    {%- elif key == 'indiamart' -%}
+    <span class="{{ tile }} text-[10px] font-extrabold" style="background:#2E3192">IM</span>
+    {%- elif key == 'rss_feeds' -%}
+    <span class="{{ tile }}" style="background:#F26522"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><circle cx="5.5" cy="14.5" r="1.8"/><path d="M3.8 8.3a8 8 0 0 1 8 8h-2.6a5.4 5.4 0 0 0-5.4-5.4V8.3Z"/><path d="M3.8 3.6c7 0 12.7 5.7 12.7 12.7h-2.6c0-5.6-4.5-10.1-10.1-10.1V3.6Z"/></svg></span>
+    {%- elif key == 'indeed' -%}
+    <span class="{{ tile }} text-[15px] font-extrabold lowercase" style="background:#2557A7">i</span>
+    {%- elif key == 'naukri' -%}
+    <span class="{{ tile }} text-[13px] font-extrabold lowercase" style="background:#275DF5">n</span>
+    {%- elif key == 'linkedin_jobs' -%}
+    <span class="{{ tile }} text-[11px] font-extrabold lowercase" style="background:#0A66C2">in</span>
+    {%- elif key == 'reddit' -%}
+    <span class="{{ tile }}" style="background:#FF4500"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M12.6 4.2l.8 2.2a6.9 6.9 0 0 1 3 .9l.1.1c.6-.5 1.5-.5 2 .1.6.6.5 1.6-.1 2.1l-.6.4c0 .2.1.4.1.6 0 2.7-3 4.8-6.4 4.8S4.1 13.3 4.1 10.6c0-.2 0-.4.1-.6l-.6-.4c-.7-.5-.7-1.5-.2-2.1.6-.6 1.5-.6 2.1-.1h.1a6.9 6.9 0 0 1 3-.9l.9-2.6 2.6.7.5-.4ZM8 9.7a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm5.1 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm-5 3.6c.7.6 1.7 1 2.9 1s2.2-.4 2.9-1l-.7-.7c-.5.4-1.3.7-2.2.7-.9 0-1.7-.3-2.2-.7l-.7.7Z" transform="translate(-0.5 0.6) scale(0.95)"/></svg></span>
+    {%- elif key == 'twitter' -%}
+    <span class="{{ tile }} text-[12px] font-extrabold" style="background:#0c0c0c">𝕏</span>
+    {%- elif key == 'facebook_ads' -%}
+    <span class="{{ tile }} text-[15px] font-extrabold lowercase" style="background:#1877F2">f</span>
+    {%- else -%}
+    <span class="{{ tile }} bg-brand-gradient text-[12px] font-extrabold uppercase">{{ key[:1] }}</span>
+    {%- endif -%}
+    {% endmacro %}
+
+    <div>
+      <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">
+        Tools <span class="text-muted/60 normal-case font-normal">(this pipeline fetches only what's enabled — vertical picks smart defaults)</span>
+      </label>
+      <div id="source-toggles" class="grid sm:grid-cols-2 gap-2">
+        {% for key, label, note in source_catalog %}
+        <label class="flex items-center gap-2.5 rounded-lg border border-edge bg-canvas px-3 py-2.5 cursor-pointer select-none transition hover:border-brand/40 has-[:checked]:border-brand/50 has-[:checked]:bg-brand/[0.04]">
+          <input type="checkbox" name="sources" value="{{ key }}" class="h-4 w-4 rounded border-edge accent-brand shrink-0" />
+          {{ tool_icon(key) }}
+          <span class="min-w-0">
+            <span class="block text-sm font-semibold text-ink leading-tight">{{ label }}</span>
+            <span class="block text-[11px] text-muted leading-snug mt-0.5">{{ note }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
     <div>
       <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">Signal focus <span class="text-muted/60 normal-case font-normal">(leave all off = any)</span></label>
       <div class="flex flex-wrap gap-4 text-sm text-slate-600 dark:text-slate-300">
@@ -152,7 +196,6 @@
         <tr class="text-left">
           <th class="px-5 py-2.5 font-semibold text-[11px] uppercase tracking-[0.08em]">Pipeline</th>
           <th class="px-3 py-2.5 font-semibold text-[11px] uppercase tracking-[0.08em]">Vertical</th>
-          <th class="px-3 py-2.5 font-semibold text-[11px] uppercase tracking-[0.08em]">Min</th>
           <th class="px-3 py-2.5 font-semibold text-[11px] uppercase tracking-[0.08em]">ICP filters</th>
           <th class="px-3 py-2.5 font-semibold text-[11px] uppercase tracking-[0.08em]">Plan</th>
           <th class="px-3 py-2.5 font-semibold text-[11px] uppercase tracking-[0.08em] text-right pr-5">Status</th>
@@ -168,13 +211,14 @@
             <div class="text-[11px] text-muted/70 font-mono">{{ (c.id|string)[:8] }}</div>
           </td>
           <td class="px-3 py-3 capitalize">{{ c.vertical.replace('_',' ') }}</td>
-          <td class="px-3 py-3 tabular-nums">{{ c.min_score }}</td>
           <td class="px-3 py-3">
             <div class="flex flex-wrap gap-1">
               {% for k in (f.industries or []) %}<span class="rounded-md bg-brand/10 text-brand dark:text-brandlight ring-1 ring-brand/15 text-[11px] px-2 py-0.5">{{ k }}</span>{% endfor %}
               {% for k in (f.cities or []) %}<span class="rounded-md bg-surface text-muted ring-1 ring-edge text-[11px] px-2 py-0.5">{{ k }}</span>{% endfor %}
               {% for k in (f.keywords or []) %}<span class="rounded-md bg-surface text-muted ring-1 ring-edge text-[11px] px-2 py-0.5">“{{ k }}”</span>{% endfor %}
-              {% if not (f.industries or f.cities or f.keywords) %}<span class="text-[11px] text-muted">all leads in vertical</span>{% endif %}
+              {% if f.custom_geolocation %}<span class="rounded-md bg-brandlight/15 text-brandmed dark:text-brandlight ring-1 ring-brandlight/30 text-[11px] px-2 py-0.5 font-medium">🗺 drawn zone</span>{% endif %}
+              {% for s in (f.sources or []) %}<span class="rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/25 text-[11px] px-2 py-0.5">⚙ {{ s.replace('_',' ') }}</span>{% endfor %}
+              {% if not (f.industries or f.cities or f.keywords or f.custom_geolocation or f.sources) %}<span class="text-[11px] text-muted">all leads in vertical</span>{% endif %}
             </div>
           </td>
           <td class="px-3 py-3 capitalize">{{ c.plan }}</td>
@@ -192,4 +236,23 @@
   </div>
   {% endif %}
 </div>
+
+<script>
+  /* Tool toggles: selecting a vertical pre-checks its default sources; the
+     operator can then enable/disable any tool freely before previewing. */
+  (function () {
+    var V_SOURCES = {{ vertical_sources | tojson }};
+    var form = document.querySelector('form[action="/pipelines/create"]');
+    if (!form) return;
+    var sel = form.querySelector('select[name="vertical"]');
+    function sync() {
+      var defs = (sel && V_SOURCES[sel.value]) || [];
+      form.querySelectorAll('input[name="sources"]').forEach(function (cb) {
+        cb.checked = defs.indexOf(cb.value) !== -1;
+      });
+    }
+    if (sel) sel.addEventListener("change", sync);
+    sync();
+  })();
+</script>
 {% endblock %}

@@ -20,7 +20,7 @@ from signal_types import GENERAL_SIGNAL, canonical
 logger = logging.getLogger("lead-intel.processors.normalizer")
 
 # Platforms whose company name and signal type must be inferred from free text.
-_FREE_TEXT_PLATFORMS = {"reddit", "twitter", "rss"}
+_FREE_TEXT_PLATFORMS = {"reddit", "twitter", "rss", "hackernews"}
 
 
 def _build_scraper_map() -> dict[str, BaseScraper]:

@@ -58,6 +58,19 @@ def _signal_cards(signals: list[Any]) -> list[SignalCard]:
 
 def _summary(company: dict[str, Any]) -> str:
     """One-line, plain-English reason this company surfaced as a lead."""
+    # Local business (Google Maps): describe the business, not intent.
+    if company.get("category") or "local_business" in (company.get("signal_types") or []):
+        piece = company.get("category") or "Local business"
+        rating = company.get("rating")
+        if rating:
+            piece += f" · {rating}★"
+            reviews = company.get("review_count")
+            if reviews:
+                piece += f" ({reviews} reviews)"
+        if not company.get("website"):
+            piece += " · no website"
+        return piece
+
     parts: list[str] = []
     if company.get("has_hiring"):
         count = company.get("hiring_role_count", 0)
@@ -97,10 +110,10 @@ def build_lead_card(
     return LeadCard(
         company_name=company.get("company_name", ""),
         company_domain=company.get("company_domain"),
-        website=company.get("website") or company_row.get("domain"),
+        website=company.get("website") or company_row.get("domain") or enrichment.get("org_website"),
         location=company.get("location"),
-        industry=company_row.get("industry"),
-        employee_count=company_row.get("employee_count"),
+        industry=company_row.get("industry") or enrichment.get("org_industry"),
+        employee_count=company_row.get("employee_count") or enrichment.get("org_employees"),
         vertical=vertical,
         score=score,
         score_breakdown=breakdown,
@@ -119,8 +132,16 @@ def build_lead_card(
         signals=_signal_cards(company.get("signals", [])),
         contact_name=enrichment.get("contact_name"),
         contact_role=enrichment.get("contact_role"),
-        email=enrichment.get("email"),
-        linkedin_url=enrichment.get("linkedin_url"),
+        email=enrichment.get("email") or company.get("email"),
+        linkedin_url=enrichment.get("linkedin_url") or enrichment.get("org_linkedin"),
+        phone=company.get("phone") or enrichment.get("org_phone"),
+        rating=company.get("rating"),
+        review_count=company.get("review_count"),
+        category=company.get("category"),
+        address=company.get("address"),
+        maps_url=company.get("maps_url"),
+        lat=company.get("lat"),
+        lng=company.get("lng"),
         status="new",
     )
 
@@ -141,8 +162,13 @@ def build_lead_cards(
     cards: list[dict[str, Any]] = []
     rejected = 0
     for company in companies:
+        # Directory listings (Google Maps, IndiaMART) are real businesses, not
+        # time-bound posts — the staleness/mega-corp gate doesn't apply to them.
+        is_directory = bool(
+            {"local_business", "supplier_listing"} & set(company.get("signal_types") or [])
+        )
         # Quality gate: skip mega-corps, staffing firms, and stale-only signals.
-        if quality_reject_reason(company, max_hiring_days=freshness_days):
+        if not is_directory and quality_reject_reason(company, max_hiring_days=freshness_days):
             rejected += 1
             continue
         score, breakdown = scorer_fn(company, vertical_config)

@@ -1,0 +1,42 @@
+# B2B Suppliers vertical — IndiaMART (opt-in).
+#
+# Turns a product/category + city into contactable Indian supplier leads —
+# manufacturers, wholesalers, traders that global databases don't cover.
+#
+# ⚠ Opt-in only: business fields only (no personal data); supplier contact
+# lists must not be resold raw. Confirm DPDP posture before selling this feed.
+
+name: b2b_suppliers
+display_name: "B2B Suppliers (IndiaMART)"
+description: >
+  Indian B2B suppliers from IndiaMART — manufacturers, wholesalers and traders
+  for a product category in a chosen city, each with company name, location,
+  phone and product line. The India moat: leads global tools return empty on.
+
+sources:
+  - indiamart
+
+target_roles: []
+signal_keywords: []
+
+# Directory-style scoring: a real, contactable supplier is the base; phone,
+# ratings and GST trust signals add confidence.
+scoring:
+  signal_supplier_listing: 40
+  has_phone: 18
+  rating_4_plus: 12
+  reviews_20_plus: 10
+  has_website: 8
+  has_email_listed: 10
+
+min_score: 40
+
+# Listings don't go stale like job posts.
+freshness_days: 3650
+
+# Defaults (overridden per pipeline via keywords/cities/max_results).
+filters:
+  categories: [packaging machines]
+  cities: [Mumbai]
+  max_results: 25
+  requires_optin: true

@@ -20,6 +20,7 @@ data/latest.json
 data/leads.json
 data/companies.json
 data/signals.json
+data/radar_*.json
 
 # OS / editor
 .DS_Store

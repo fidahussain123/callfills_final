@@ -1,4 +1,4 @@
-{% set LABELS = {'linkedin':'LinkedIn','naukri':'Naukri','indeed':'Indeed','wellfound':'Wellfound','rss':'Funding news','reddit':'Reddit','twitter':'Twitter / X','facebook':'Facebook Ads'} %}
+{% set LABELS = {'linkedin':'LinkedIn','naukri':'Naukri','indeed':'Indeed','wellfound':'Wellfound','rss':'Funding news','reddit':'Reddit','twitter':'Twitter / X','facebook':'Facebook Ads','google_maps':'Google Maps','crunchbase':'Crunchbase','indiamart':'IndiaMART','hackernews':'Hacker News'} %}
 {% set srcs = run.sources or {} %}
 {% set total = srcs|length %}
 {% set done = (srcs.values()|selectattr('state','equalto','done')|list|length) + (srcs.values()|selectattr('state','equalto','failed')|list|length) %}
@@ -60,7 +60,7 @@
     {% elif run.stage == 'error' %}
     <span class="text-rose-500">Something went wrong — check the server logs.</span>
     {% else %}
-    <span class="text-ink font-semibold tabular-nums">{{ run.leads or 0 }} leads · {{ run.qualified or 0 }} qualified</span>
+    <span class="text-ink font-semibold tabular-nums">{{ run.leads or 0 }} leads</span>
     <a href="/dashboard/leads-view"
        class="text-brand dark:text-brandlight font-semibold hover:underline">Show leads →</a>
     {% endif %}

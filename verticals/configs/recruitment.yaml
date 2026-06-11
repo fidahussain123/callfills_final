@@ -12,13 +12,14 @@ description: >
 
 # Scrapers (registry keys) this vertical pulls from.
 sources:
-  - linkedin_jobs
-  - naukri
   - indeed
   - wellfound
   - rss_feeds
-  # --- Held in the bar (noisy free-text comment soup → junk leads). Re-enable
-  #     once volume/AI-filtering is sorted. Scraper code is untouched. ---
+  # --- Benched: the slow + costly job boards. Indeed alone covers hiring.
+  #     Re-enable if you need more hiring volume for recruitment clients. ---
+  # - linkedin_jobs   # slow + flaky actor
+  # - naukri          # keyword×city matrix = ~9 actor runs/scrape (costliest)
+  # --- Held in the bar (noisy free-text comment soup → junk leads). ---
   # - facebook_ads
   # - reddit
   # - twitter

@@ -35,6 +35,10 @@ _BUNDLED_MODULES = [
     "scrapers.facebook_ads",
     "scrapers.reddit",
     "scrapers.twitter",
+    "scrapers.google_maps",
+    "scrapers.hackernews",
+    "scrapers.crunchbase",
+    "scrapers.indiamart",
 ]
 
 _loaded = False
