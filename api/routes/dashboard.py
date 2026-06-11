@@ -170,10 +170,10 @@ def lead_detail(
 ) -> HTMLResponse:
     """HTMX partial: one Lead Card drawer (only if inside the tenant's scope)."""
     tenant = resolve_tenant(user)
-    lead = store.get_lead(company_name)
-    # Enforce scope: a client member can't open a lead outside their ICP.
-    if lead and not scope_leads(tenant, [lead]):
-        lead = None
+    # A company can exist under several verticals (old + new pipelines); show
+    # the copy inside the tenant's scope — the same one their lists render.
+    in_scope = scope_leads(tenant, store.get_lead_matches(company_name))
+    lead = in_scope[0] if in_scope else None
     return templates.TemplateResponse(
         request, "partials/lead_detail.html", {"lead": lead}
     )

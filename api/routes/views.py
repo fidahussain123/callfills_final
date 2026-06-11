@@ -138,9 +138,9 @@ def company_detail(
 ) -> HTMLResponse:
     """HTMX drawer: one company — where its signals come from, details, profiles."""
     tenant = resolve_tenant(user)
-    company = store.get_lead(company_name)
-    if company and not scope_leads(tenant, [company]):
-        company = None  # outside the tenant's slice
+    # Same-name copies can exist across verticals; show the in-scope one.
+    in_scope = scope_leads(tenant, store.get_lead_matches(company_name))
+    company = in_scope[0] if in_scope else None
 
     sources: list[dict[str, Any]] = []
     max_count = 1
@@ -182,9 +182,9 @@ def company_contacts(
     from processors import enricher
 
     tenant = resolve_tenant(user)
-    lead = store.get_lead(company_name)
-    if lead and not scope_leads(tenant, [lead]):
-        lead = None  # outside the tenant's slice
+    # Same-name copies can exist across verticals; use the in-scope one.
+    in_scope = scope_leads(tenant, store.get_lead_matches(company_name))
+    lead = in_scope[0] if in_scope else None
     result = None
     if lead:
         domain = lead.get("company_domain") or lead.get("website")

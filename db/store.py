@@ -147,13 +147,28 @@ def get_leads(
     return filtered[:limit]
 
 
-def get_lead(company_name: str) -> Optional[dict[str, Any]]:
-    """Return a single lead card by (case-insensitive) company name."""
+def get_lead_matches(company_name: str) -> list[dict[str, Any]]:
+    """All lead cards with this (case-insensitive) name, best score first.
+
+    The same company can appear under multiple verticals (e.g. a funded startup
+    scraped by both an old recruitment run and the startups pipeline), so the
+    caller must pick the copy that fits its context — e.g. the one inside the
+    tenant's scope.
+    """
     target = (company_name or "").strip().lower()
-    for lead in _read_leads():
-        if (lead.get("company_name") or "").strip().lower() == target:
-            return lead
-    return None
+    matches = [
+        lead
+        for lead in _read_leads()
+        if (lead.get("company_name") or "").strip().lower() == target
+    ]
+    matches.sort(key=lambda lead: lead.get("score") or 0, reverse=True)
+    return matches
+
+
+def get_lead(company_name: str) -> Optional[dict[str, Any]]:
+    """Return the best-scored lead card for a (case-insensitive) company name."""
+    matches = get_lead_matches(company_name)
+    return matches[0] if matches else None
 
 
 def available_sources() -> list[str]:
