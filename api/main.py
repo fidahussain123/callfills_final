@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from api.auth import require_admin
 from api.routes import auth_routes, clients, companies, dashboard, leads, onboarding, views
 from api.supabase_auth import AuthRedirect, auth_middleware
-from pipeline import LAST_RUN, run_pipeline
+from pipeline import LAST_RUN, run_all_pipelines
 from scheduler import get_next_run, shutdown_scheduler, start_scheduler
 
 logger = logging.getLogger("lead-intel.api")
@@ -88,6 +88,6 @@ def health() -> dict[str, Any]:
 async def trigger_pipeline(_admin: bool = Depends(require_admin)) -> dict[str, Any]:
     """Manually trigger a pipeline run in the background (admin only)."""
     run_id = str(uuid4())
-    asyncio.create_task(run_pipeline())
+    asyncio.create_task(run_all_pipelines())
     logger.info("Manual pipeline trigger %s", run_id)
     return {"status": "started", "run_id": run_id}

@@ -79,11 +79,12 @@ _NAMES = sorted(set(_COORDS) | set(_ALIASES), key=len, reverse=True)
 _PATTERNS = [(n, re.compile(r"\b" + re.escape(n) + r"\b")) for n in _NAMES]
 
 
-def geocode_city(location: Optional[str]) -> Optional[tuple[float, float]]:
-    """Return (lat, lng) for the first known city found in ``location``, else None.
+def canonical_city(location: Optional[str]) -> Optional[str]:
+    """Return the canonical city key found in ``location`` (alias-aware), else None.
 
-    Matches whole words so "HSR Layout, Bangalore" -> Bengaluru and
-    "Bengaluru, Karnataka, India" -> Bengaluru, while "Remote"/unknown -> None.
+    "Bangalore"/"Bengaluru" -> "bengaluru"; "New Delhi"/"Delhi" -> "delhi";
+    "Gurgaon"/"Gurugram" -> "gurugram". Used to compare a lead's location to a
+    pipeline's target cities without tripping over spelling variants.
     """
     if not location:
         return None
@@ -92,5 +93,15 @@ def geocode_city(location: Optional[str]) -> Optional[tuple[float, float]]:
         return None
     for name, pattern in _PATTERNS:
         if pattern.search(text):
-            return _COORDS[_ALIASES.get(name, name)]
+            return _ALIASES.get(name, name)
     return None
+
+
+def geocode_city(location: Optional[str]) -> Optional[tuple[float, float]]:
+    """Return (lat, lng) for the first known city found in ``location``, else None.
+
+    Matches whole words so "HSR Layout, Bangalore" -> Bengaluru and
+    "Bengaluru, Karnataka, India" -> Bengaluru, while "Remote"/unknown -> None.
+    """
+    canon = canonical_city(location)
+    return _COORDS[canon] if canon else None

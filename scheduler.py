@@ -9,7 +9,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from config import settings
-from pipeline import run_all_digests, run_pipeline
+from pipeline import run_all_digests, run_all_pipelines
 
 logger = logging.getLogger("lead-intel.scheduler")
 
@@ -17,9 +17,9 @@ _scheduler: AsyncIOScheduler | None = None
 
 
 async def _pipeline_job() -> None:
-    """Scheduled job wrapper that runs the pipeline and logs the next run."""
+    """Scheduled job: run each saved pipeline with its own sources/filters."""
     try:
-        await run_pipeline()
+        await run_all_pipelines()
     except Exception as exc:  # noqa: BLE001
         logger.error("Scheduled pipeline run failed: %s", exc)
     finally:

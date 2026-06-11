@@ -215,6 +215,17 @@ def get_client_by_id(client_id: str) -> Optional[dict[str, Any]]:
         return None
 
 
+def delete_client_row(client_id: str) -> bool:
+    """Delete a client (pipeline) row. Leads cascade; profiles unassign (SET NULL)."""
+    client = get_client()
+    try:
+        client.table("clients").delete().eq("id", client_id).execute()
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.error("delete_client_row failed: %s", exc)
+        return False
+
+
 def list_clients() -> list[dict[str, Any]]:
     """Return every client row (active and inactive), newest first."""
     client = get_client()

@@ -121,8 +121,13 @@ def apply_icp(leads: list[dict[str, Any]], client: Optional[dict[str, Any]]) -> 
     vertical = client.get("vertical")
     min_score = client.get("min_score")
     f = client.get("filters") or {}
+    from processors.geocoder import canonical_city
+
     industries = {s.lower() for s in (f.get("industries") or [])}
     cities = {s.lower() for s in ((f.get("cities") or []) + (f.get("locations") or []))}
+    # Canonical keys of the target cities, so "Delhi" also matches "New Delhi" and
+    # "Bangalore" matches "Bengaluru" without spelling-variant misses.
+    city_canons = {c for c in (canonical_city(s) for s in cities) if c}
     keywords = [s.lower() for s in (f.get("keywords") or [])]
     signal_types = set(f.get("signal_types") or [])
     emp_min, emp_max = f.get("employee_min"), f.get("employee_max")
@@ -146,8 +151,15 @@ def apply_icp(leads: list[dict[str, Any]], client: Optional[dict[str, Any]]) -> 
                 continue
         if cities:
             loc = (lead.get("location") or "").lower()
-            if loc and not any(c in loc for c in cities):
-                continue
+            # Only filter leads that actually carry a location; an alias-aware
+            # canonical match ("New Delhi" -> delhi) with a raw-substring fallback.
+            if loc:
+                loc_canon = canonical_city(loc)
+                matched = (loc_canon and loc_canon in city_canons) or any(
+                    c in loc for c in cities
+                )
+                if not matched:
+                    continue
         if keywords:
             hay = " ".join(
                 str(lead.get(k) or "") for k in ("company_name", "website", "location", "summary")

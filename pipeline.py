@@ -13,6 +13,7 @@ also mirrors to Supabase and delivers per active client.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -271,6 +272,51 @@ async def _deliver_to_clients(lead_cards: list[dict[str, Any]]) -> int:
         if client.telegram_chat_id:
             total += await telegram.send_batch(leads, client)
     return total
+
+
+async def run_all_pipelines() -> dict[str, Any]:
+    """Run the pipeline once per saved pipeline (active client), not a default.
+
+    Scheduled/automatic runs must scrape exactly what the user configured: each
+    pipeline's vertical with its own source toggles, cities, and zone. With no
+    pipelines saved, nothing is scraped — there is no fallback to a hardcoded
+    vertical, because that re-runs sources the user never asked for.
+    Duplicate pipelines (same vertical + filters) are collapsed into one run.
+    """
+    # Pipelines live in the Supabase ``clients`` table (read with the service
+    # key) even when lead storage is JSON — so gate on that, not STORAGE_BACKEND.
+    if not (settings.SUPABASE_URL and settings.SUPABASE_SERVICE_KEY):
+        logger.info("Supabase not configured; running default vertical")
+        return await run_pipeline()
+    from db import supabase_client as db
+
+    seen: set[str] = set()
+    runs: list[dict[str, Any]] = []
+    for client_row in db.get_active_clients():
+        vertical = client_row.get("vertical")
+        if not vertical:
+            continue
+        search = client_row.get("filters") or None
+        key = json.dumps({"v": vertical, "s": search}, sort_keys=True, default=str)
+        if key in seen:
+            continue
+        seen.add(key)
+        runs.append({"vertical": vertical, "search": search})
+
+    if not runs:
+        logger.info("No active pipelines; skipping scheduled scrape")
+        return {"pipelines": 0, "leads": 0}
+
+    totals = {"pipelines": 0, "leads": 0}
+    for run in runs:  # sequential: shared RUN_STATUS + Apify concurrency limits
+        try:
+            stats = await run_pipeline(vertical=run["vertical"], search=run["search"])
+            totals["pipelines"] += 1
+            totals["leads"] += stats.get("leads", 0)
+        except Exception as exc:  # noqa: BLE001 - one bad pipeline must not stop the rest
+            logger.error("Scheduled run failed for vertical=%s: %s", run["vertical"], exc)
+    logger.info("Scheduled sweep done: %(pipelines)d pipelines, %(leads)d leads", totals)
+    return totals
 
 
 async def run_all_digests() -> int:
