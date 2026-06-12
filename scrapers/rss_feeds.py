@@ -35,14 +35,26 @@ from signal_types import FUNDING_ROUND
 
 logger = logging.getLogger("lead-intel.scrapers.rss")
 
-# India-focused funding feeds + a Google News query scoped to Indian rounds.
+# India-focused funding feeds + Google News queries scoped to Indian rounds.
+# The per-city queries are the Geo Pack: a headline matched by a city query
+# almost always *names* that city, so the HQ-city extractor (regex, then the
+# AI-qualify pass) can attach a location — generic queries rarely give one.
+_GEO_QUERY_CITIES = [
+    "Delhi", "Bengaluru", "Mumbai", "Hyderabad", "Pune", "Chennai",
+    "Gurugram", "Noida", "Ahmedabad", "Jaipur", "Kolkata",
+]
+
+def _city_feed(city: str) -> str:
+    q = f'startup+funding+raised+"{city}"+when:90d'.replace(" ", "+").replace('"', "%22")
+    return f"https://news.google.com/rss/search?q={q}&hl=en-IN&gl=IN&ceid=IN:en"
+
 _FEEDS = [
     "https://inc42.com/feed/",
     "https://yourstory.com/feed",
     "https://economictimes.indiatimes.com/tech/funding/rssfeeds/82496341.cms",
     "https://entrackr.com/feed",
     "https://news.google.com/rss/search?q=startup+funding+India+raised+when:90d&hl=en-IN&gl=IN&ceid=IN:en",
-]
+] + [_city_feed(c) for c in _GEO_QUERY_CITIES]
 
 _FUNDING_KEYWORDS = [
     "raises",

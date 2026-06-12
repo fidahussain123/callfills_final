@@ -110,6 +110,9 @@ def _enrich_org(client: httpx.Client, domain: str) -> Optional[dict[str, Any]]:
         "org_website": org.get("website_url") or org.get("primary_domain"),
         "org_phone": phone,
         "org_founded": org.get("founded_year"),
+        "org_city": org.get("city"),
+        "org_state": org.get("state"),
+        "org_country": org.get("country"),
     }
 
 
@@ -271,6 +274,106 @@ def enrich_company(company_domain: str, company_name: str) -> Optional[dict[str,
             if person:
                 out.update(person)
     return out or None
+
+
+_CLEARBIT_SUGGEST = "https://autocomplete.clearbit.com/v1/companies/suggest"
+
+
+def _normalize_name(name: str) -> str:
+    """Lowercase alphanumerics only — for exact name↔domain comparison."""
+    return re.sub(r"[^a-z0-9]", "", (name or "").lower())
+
+
+def _resolve_domain(client: httpx.Client, company_name: str) -> Optional[str]:
+    """Best-effort company-name → domain via Clearbit's free autocomplete.
+
+    Funding-news leads carry no domain, and Apollo's org endpoint needs one.
+    Only an EXACT normalized match is accepted ("Ethereal Machines" ↔
+    etherealmachines.com) — close-but-different suggestions ("TrueFan" →
+    truefanz.com, a different company) are rejected, because enriching the
+    wrong company is worse than not enriching. Returns None on any miss/error.
+    """
+    target = _normalize_name(company_name)
+    if len(target) < 4:  # too short to match safely
+        return None
+    try:
+        resp = client.get(_CLEARBIT_SUGGEST, params={"query": company_name}, timeout=10)
+        if resp.status_code != 200:
+            return None
+        for hit in resp.json() or []:
+            domain = (hit.get("domain") or "").lower()
+            root = domain.split(".")[0] if domain else ""
+            if root and (root == target or _normalize_name(hit.get("name", "")) == target):
+                return domain
+    except Exception:  # noqa: BLE001 - resolution is strictly best-effort
+        return None
+    return None
+
+
+def auto_enrich_orgs(
+    companies: list[dict[str, Any]],
+    score_fn: Any,
+    vertical_config: dict[str, Any],
+) -> int:
+    """Auto-enrich the TOP-scored companies with the FREE org endpoint only.
+
+    Runs on every pipeline scrape (capped at ``APOLLO_AUTO_ENRICH_TOP``) so the
+    best leads carry firmographics — industry, size, website, and HQ city —
+    without spending people-search credits. Companies without a domain are
+    skipped (the org endpoint needs one). Fills ``location``/``lat``/``lng``
+    from Apollo's HQ city when the lead has none, so it pins on the map.
+    Returns the number of companies enriched. Fail-open: errors leave
+    ``enrichment`` as None and the run continues.
+    """
+    if not (settings.APOLLO_API_KEY and settings.APOLLO_AUTO_ENRICH):
+        return 0
+    candidates = [c for c in companies if not c.get("enrichment")]
+    if not candidates:
+        return 0
+    try:
+        candidates.sort(key=lambda c: score_fn(c, vertical_config)[0], reverse=True)
+    except Exception:  # noqa: BLE001 - ranking is best-effort; order is fine
+        pass
+    top = candidates[: max(0, settings.APOLLO_AUTO_ENRICH_TOP)]
+
+    from processors.geocoder import geocode_city
+
+    enriched = 0
+    resolved = 0
+    with httpx.Client(timeout=30.0) as client:
+        for company in top:
+            domain = _bare_domain(company.get("company_domain") or company.get("website"))
+            if not domain:
+                # Funding-news leads have no domain; try the free name→domain
+                # resolver so Apollo has something to enrich.
+                domain = _resolve_domain(client, company.get("company_name") or "")
+                if domain:
+                    company["company_domain"] = domain
+                    resolved += 1
+            if not domain:
+                continue
+            try:
+                org = _enrich_org(client, domain)
+            except Exception as exc:  # noqa: BLE001 - one miss must not stop the run
+                logger.warning("Org enrich failed for %s: %s", domain, exc)
+                org = None
+            if org:
+                company["enrichment"] = org
+                enriched += 1
+                city = org.get("org_city")
+                if city and not company.get("location"):
+                    company["location"] = city
+                    if company.get("lat") is None or company.get("lng") is None:
+                        coords = geocode_city(city)
+                        if coords:
+                            company["lat"], company["lng"] = coords
+            time.sleep(_RATE_LIMIT_SLEEP)
+    logger.info(
+        "Auto org-enrich: %d/%d top companies enriched, %d domains resolved "
+        "(cap %d, free endpoints)",
+        enriched, len(top), resolved, settings.APOLLO_AUTO_ENRICH_TOP,
+    )
+    return enriched
 
 
 def enrich_all(companies: list[dict[str, Any]]) -> list[dict[str, Any]]:

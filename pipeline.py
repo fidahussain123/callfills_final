@@ -22,6 +22,7 @@ from config import settings
 from db import store
 from db.models import Client
 from processors import (
+    ai_qualify,
     ai_verify,
     cross_ref,
     deduplicator,
@@ -179,11 +180,24 @@ async def run_pipeline(
     companies = cross_ref.find_overlap(deduped)
     stats["companies"] = len(companies)
 
-    # STEP 5 — Enrichment is ON-DEMAND (per-company "Reveal contacts" button),
-    # never on a scrape, so Apollo credits are only spent when a client asks.
+    # STEP 4.5 — Company-level AI qualification: one Groq verdict per deduped
+    # company (junk filter + "why it's a lead" line + HQ-city extraction).
+    # Directory sources skip it; fail-open without a GROQ key.
+    RUN_STATUS["stage"] = "qualifying"
+    companies = await ai_qualify.qualify_companies(companies, vertical_config)
+    stats["after_ai_qualify"] = len(companies)
+    RUN_STATUS["stage"] = "processing"
+
+    # STEP 5 — Firmographics for the top leads via Apollo's FREE org endpoint
+    # (industry, size, HQ city — capped, no people credits). Decision-maker
+    # emails stay ON-DEMAND behind the "Reveal contacts" button.
     for company in companies:
         company["enrichment"] = None
-    stats["enriched"] = 0
+    RUN_STATUS["stage"] = "enriching"
+    stats["enriched"] = await asyncio.to_thread(
+        enricher.auto_enrich_orgs, companies, scorer.score, vertical_config
+    )
+    RUN_STATUS["stage"] = "processing"
 
     # STEP 6 — Build rich Lead Cards (scored against the vertical).
     lead_cards = lead_builder.build_lead_cards(companies, scorer.score, vertical_config)

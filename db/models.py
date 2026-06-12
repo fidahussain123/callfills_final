@@ -156,6 +156,8 @@ class LeadCard(BaseModel):
     score_breakdown: dict[str, Any] = Field(default_factory=dict)
     meets_threshold: bool = False
     summary: str = ""
+    # One-line AI verdict from the qualify gate ("why this is a lead").
+    ai_summary: Optional[str] = None
 
     # Signal profile
     has_hiring: bool = False

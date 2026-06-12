@@ -274,7 +274,8 @@ _FUNDING_VERB_RE = re.compile(
 
 # Leading editorial tags to strip: "Exclusive:", "Breaking:", "Watch -" …
 _LEAD_TAG_RE = re.compile(
-    r"^\s*(?:exclusive|breaking|update|watch|report|news|just\s+in|opinion)\s*[:\-–]\s*",
+    r"^\s*(?:[\[{(][^\]})]{0,30}[\]})]\s*)?"  # bracketed tags: "{Funding Alert}", "[Exclusive]"
+    r"(?:(?:exclusive|breaking|update|watch|report|news|just\s+in|opinion)\s*[:\-–]\s*)?",
     re.IGNORECASE,
 )
 
@@ -295,6 +296,14 @@ _DESCRIPTOR_WORDS = {
 
 # Trailing title words to strip off an extracted name ("Sarvam AI Funding Round" → "Sarvam AI").
 _TRAILING_JUNK = {"funding", "round"}
+
+# A name ENDING in one of these is a description, not a company ("Bengaluru AI
+# startup", "Hyderabad Defence Startup") — reject it. Sector suffixes like
+# "AI"/"Labs" are fine ("Sarvam AI"); these generic nouns never end a real name.
+_TRAILING_REJECT = {
+    "startup", "startups", "company", "firm", "brand", "unicorn", "giant",
+    "player", "maker", "platform", "major",
+}
 
 # If the WHOLE extracted name is one of these, it's not a real company.
 _NON_COMPANY = {
@@ -371,6 +380,8 @@ def _name_from_subject(subject: str) -> Optional[str]:
     name = " ".join(parts).strip(_QUOTE_CHARS)
     if not name or name.lower() in _NON_COMPANY or len(name) < 2:
         return None
+    if parts and parts[-1].lower().rstrip(".:,") in _TRAILING_REJECT:
+        return None  # "Bengaluru AI startup" — a description, not a name
     return name
 
 

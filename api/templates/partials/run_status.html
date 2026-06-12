@@ -10,7 +10,7 @@
     <div class="flex items-center gap-2.5 min-w-0">
       {% if run.running %}
       <span class="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin shrink-0"></span>
-      <span class="text-sm font-bold truncate">{% if run.stage == 'verifying' %}Verifying with AI…{% elif run.stage == 'processing' %}Processing leads…{% else %}Scraping {{ run.vertical or '' }}…{% endif %}</span>
+      <span class="text-sm font-bold truncate">{% if run.stage == 'verifying' %}Verifying with AI…{% elif run.stage == 'qualifying' %}AI-qualifying companies…{% elif run.stage == 'enriching' %}Enriching top leads…{% elif run.stage == 'processing' %}Processing leads…{% else %}Scraping {{ run.vertical or '' }}…{% endif %}</span>
       {% elif run.stage == 'error' %}
       <span class="text-base shrink-0">⚠</span><span class="text-sm font-bold">Run failed</span>
       {% else %}

@@ -59,6 +59,12 @@ class Settings:
         # Max decision-makers revealed per "Reveal contacts" click (each email
         # reveal = 1 credit on a paid plan; names/titles are free).
         self.APOLLO_MAX_PEOPLE: int = int(_get("APOLLO_MAX_PEOPLE", "5"))  # type: ignore[arg-type]
+        # Auto-enrich the top N leads of every pipeline run with the FREE org
+        # endpoint (industry, size, HQ city). People/emails stay on-demand only.
+        self.APOLLO_AUTO_ENRICH: bool = _get("APOLLO_AUTO_ENRICH", "true").lower() in (  # type: ignore[union-attr]
+            "1", "true", "yes",
+        )
+        self.APOLLO_AUTO_ENRICH_TOP: int = int(_get("APOLLO_AUTO_ENRICH_TOP", "25"))  # type: ignore[arg-type]
         self.SUPABASE_URL: str | None = _get("SUPABASE_URL")
         self.SUPABASE_SERVICE_KEY: str | None = _get("SUPABASE_SERVICE_KEY")
         # Anon (public) key — used for end-user auth (sign-in/up) via GoTrue.
@@ -93,6 +99,12 @@ class Settings:
             for p in (_get("AI_VERIFY_PLATFORMS", "reddit,twitter,facebook,hackernews") or "").split(",")
             if p.strip()
         }
+        # Company-level AI qualification (post-dedup): one Groq verdict per
+        # company — junk filter + one-line "why it's a lead" + HQ-city extraction.
+        # Directory sources (Google Maps, IndiaMART) skip it — already verified.
+        self.AI_QUALIFY_ENABLED: bool = _get("AI_QUALIFY_ENABLED", "true").lower() in (  # type: ignore[union-attr]
+            "1", "true", "yes",
+        )
 
         # --- Real-time radar (Signals page watcher) ---
         # Hacker News needs no key; Reddit joins automatically once its OAuth

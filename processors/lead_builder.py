@@ -119,6 +119,7 @@ def build_lead_card(
         score_breakdown=breakdown,
         meets_threshold=score >= min_score,
         summary=_summary(company),
+        ai_summary=company.get("ai_summary"),
         has_hiring=company.get("has_hiring", False),
         has_funding=company.get("has_funding", False),
         has_social=company.get("has_social", False),
