@@ -39,14 +39,18 @@ def _parse_bool(value: Optional[str]) -> Optional[bool]:
 
 
 def _stats_for(tenant: dict[str, Any], leads: list[dict[str, Any]]) -> dict[str, Any]:
-    """Stat-card data: global for operators, derived from the slice for clients."""
-    if tenant.get("is_operator"):
-        return store.get_stats()
+    """Stat-card data derived from the (already tenant-scoped) live lead list.
+
+    Derived from ``leads`` rather than the last run's ``latest.json`` so the cards
+    always match the leads actually on screen and stay correct when leads are read
+    from the database (where ``latest.json`` may not exist, e.g. on Render).
+    """
     qualified = sum(1 for lead in leads if (lead.get("score") or 0) >= 60)
     signals = sum(len(lead.get("signals") or []) for lead in leads)
+    companies = len({(lead.get("company_name") or "").strip().lower() for lead in leads})
     return {
         "generated_at": store.get_stats().get("generated_at"),
-        "counts": {"leads": len(leads), "companies": len(leads), "signals": signals},
+        "counts": {"leads": len(leads), "companies": companies, "signals": signals},
         "stats": {"leads_meeting_threshold": qualified},
     }
 
