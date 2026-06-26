@@ -109,6 +109,35 @@ ALTER TABLE leads ADD COLUMN IF NOT EXISTS signals            jsonb DEFAULT '[]'
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS meets_threshold    boolean DEFAULT false;
 
 -- ──────────────────────────────────────────────────────────────────────────
+-- lead_pool: the shared, client-agnostic generated lead pool the dashboard
+-- renders (then filters per-tenant in Python via apply_icp). Persisting it here
+-- means leads survive restarts and show on ephemeral-disk deploys (e.g. Render),
+-- instead of living only in local data/leads.json. The full LeadCard is stored
+-- in `card` (jsonb) for lossless reads; the promoted columns enable indexing.
+-- ``leads`` (above) stays the per-client DELIVERED-lead ledger; this is the POOL.
+-- ──────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS lead_pool (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_name    text NOT NULL,
+    vertical        text NOT NULL,
+    company_domain  text,
+    location        text,
+    score           int DEFAULT 0,
+    has_hiring      boolean DEFAULT false,
+    has_funding     boolean DEFAULT false,
+    meets_threshold boolean DEFAULT false,
+    card            jsonb NOT NULL DEFAULT '{}'::jsonb,
+    updated_at      timestamptz DEFAULT now()
+);
+
+-- One row per (company, vertical); upsert refreshes it each run.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_lead_pool_name_vertical
+    ON lead_pool (company_name, vertical);
+
+CREATE INDEX IF NOT EXISTS idx_lead_pool_vertical_score
+    ON lead_pool (vertical, score DESC);
+
+-- ──────────────────────────────────────────────────────────────────────────
 -- profiles: links a Supabase Auth user (auth.users) to a tenant + role.
 -- A profile row is created automatically on signup via the trigger below, so
 -- every authenticated user maps to exactly one app identity. ``client_id`` is

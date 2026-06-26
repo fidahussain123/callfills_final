@@ -10,6 +10,7 @@ this keeps the dashboard fully functional in Apify-only / no-Supabase mode.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Optional
 
 from config import settings
@@ -19,6 +20,12 @@ logger = logging.getLogger("lead-intel.db.store")
 
 _LEADS_FILE = "leads.json"
 _LATEST_FILE = "latest.json"
+
+# Short-lived cache of the DB lead pool so a single page render (which calls
+# _read_leads several times) doesn't hit Supabase repeatedly. Writes invalidate
+# it immediately, so leads appear right after a run.
+_pool_cache: Optional[tuple[list[dict[str, Any]], float]] = None
+_POOL_TTL = 10.0  # seconds
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -31,10 +38,12 @@ def save_run(
     stats: Optional[dict[str, Any]] = None,
 ) -> dict[str, str]:
     """Persist a full run. Always JSON; also Supabase when configured."""
+    global _pool_cache
     paths = json_store.save_run(signals, companies, leads, stats)
     if settings.use_supabase:
         try:
             _persist_supabase(companies, leads)
+            _pool_cache = None  # invalidate so the new leads show immediately
         except Exception as exc:  # noqa: BLE001 - JSON already saved; don't abort
             logger.error("Supabase persistence failed (JSON saved): %s", exc)
     return paths
@@ -67,14 +76,40 @@ def _persist_supabase(
                     "metadata": sig.get("metadata", {}),
                 }
             )
-    logger.info("Mirrored %d companies to Supabase", len(companies))
+
+    # Persist the generated lead cards into the shared pool the dashboard reads,
+    # so leads survive restarts / ephemeral-disk deploys (not just local JSON).
+    verticals = {lead.get("vertical") for lead in leads if lead.get("vertical")}
+    written = sb.replace_pool_leads(verticals, leads)
+    logger.info("Mirrored %d companies + %d leads to Supabase", len(companies), written)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Reads (served from JSON artifacts the pipeline refreshes every run)
 # ──────────────────────────────────────────────────────────────────────────────
 def _read_leads() -> list[dict[str, Any]]:
-    """Load the most recent lead cards from JSON, or an empty list."""
+    """Load the most recent lead cards.
+
+    When Supabase is the backend, read the shared ``lead_pool`` (so leads survive
+    restarts / ephemeral disks), with a short cache. Falls back to JSON when the
+    backend is JSON, the pool is empty (e.g. before the first DB run), or the DB
+    read errors — so the dashboard is never blank when JSON has data.
+    """
+    global _pool_cache
+    if settings.use_supabase:
+        now = time.time()
+        if _pool_cache and _pool_cache[1] > now:
+            return _pool_cache[0]
+        try:
+            from db import supabase_client as sb
+
+            pool = sb.get_pool_leads(limit=2000)
+            if pool:
+                _pool_cache = (pool, now + _POOL_TTL)
+                return pool
+        except Exception as exc:  # noqa: BLE001 - fall back to JSON
+            logger.error("DB lead-pool read failed, falling back to JSON: %s", exc)
+
     try:
         data = json_store.read_json(_LEADS_FILE)
         return data if isinstance(data, list) else []

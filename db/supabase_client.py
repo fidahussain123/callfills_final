@@ -155,6 +155,80 @@ def get_leads(
         return []
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Lead pool (shared, client-agnostic generated pool the dashboard renders)
+# ──────────────────────────────────────────────────────────────────────────────
+def _pool_row(lead: dict[str, Any]) -> dict[str, Any]:
+    """Map a LeadCard dict to a ``lead_pool`` row (promoted cols + full card)."""
+    return {
+        "company_name": lead.get("company_name") or "",
+        "vertical": lead.get("vertical") or "",
+        "company_domain": lead.get("company_domain"),
+        "location": lead.get("location"),
+        "score": int(lead.get("score") or 0),
+        "has_hiring": bool(lead.get("has_hiring")),
+        "has_funding": bool(lead.get("has_funding")),
+        "meets_threshold": bool(lead.get("meets_threshold")),
+        "card": lead,
+    }
+
+
+def replace_pool_leads(verticals: Any, leads: list[dict[str, Any]]) -> int:
+    """Upsert ``leads`` into ``lead_pool`` and drop now-absent rows per vertical.
+
+    Mirrors the JSON store's per-vertical merge: rows for OTHER verticals are
+    left untouched, and for each vertical in this run the pool ends up exactly
+    matching the new set (upsert refreshes, delete-stale removes companies that
+    no longer appear). Returns the number of rows written. Fail-open: returns 0
+    and logs on any error so the run never aborts on a persistence hiccup.
+    """
+    client = get_client()
+    # Dedupe by (company_name, vertical), keeping the highest-scored copy.
+    best: dict[tuple[str, str], dict[str, Any]] = {}
+    for lead in leads:
+        row = _pool_row(lead)
+        if not row["company_name"] or not row["vertical"]:
+            continue
+        key = (row["company_name"], row["vertical"])
+        cur = best.get(key)
+        if cur is None or row["score"] > cur["score"]:
+            best[key] = row
+    rows = list(best.values())
+    try:
+        if rows:
+            client.table("lead_pool").upsert(
+                rows, on_conflict="company_name,vertical"
+            ).execute()
+        for vertical in verticals:
+            names = [r["company_name"] for r in rows if r["vertical"] == vertical]
+            q = client.table("lead_pool").delete().eq("vertical", vertical)
+            if names:  # keep the refreshed rows, drop the vanished ones
+                q = q.not_.in_("company_name", names)
+            q.execute()
+        logger.info("lead_pool: wrote %d rows (verticals=%s)", len(rows), sorted(set(verticals)))
+        return len(rows)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("replace_pool_leads failed: %s", exc)
+        return 0
+
+
+def get_pool_leads(limit: int = 2000) -> list[dict[str, Any]]:
+    """Return full LeadCards from the shared pool, best score first."""
+    client = get_client()
+    try:
+        res = (
+            client.table("lead_pool")
+            .select("card")
+            .order("score", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return [r["card"] for r in (res.data or []) if isinstance(r.get("card"), dict)]
+    except Exception as exc:  # noqa: BLE001
+        logger.error("get_pool_leads failed: %s", exc)
+        return []
+
+
 def get_recent_leads_for_client(client_id: str, hours: int = 24) -> list[dict[str, Any]]:
     """Return leads created for a client within the last ``hours`` hours."""
     client = get_client()
