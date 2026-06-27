@@ -1,9 +1,9 @@
 {# On-demand Apollo result: company profile + senior decision-makers.
    Replaces the "Reveal contacts" button in #apollo-contacts when clicked. #}
-{% if not r or r.people_status == 'no_key' %}
-<div class="rounded-lg border border-edge bg-surface px-3.5 py-3 text-xs text-muted">Apollo isn’t configured.</div>
-{% elif r.people_status == 'no_domain' %}
-<div class="rounded-lg border border-edge bg-surface px-3.5 py-3 text-xs text-muted">No website on file for this company — can’t run an Apollo lookup.</div>
+{% if not r %}
+<div class="rounded-lg border border-edge bg-surface px-3.5 py-3 text-xs text-muted">No result.</div>
+{% elif not r.org and not r.people %}
+<div class="rounded-lg border border-edge bg-surface px-3.5 py-3 text-xs text-muted">Couldn’t find company info or decision-makers for this one.</div>
 {% else %}
 <div class="rounded-xl border border-edge overflow-hidden divide-y divide-edge">
   {% set o = r.org %}
@@ -26,7 +26,7 @@
   {% endif %}
 
   <div class="px-3.5 py-3">
-    <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-2.5">Decision-makers</p>
+    <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-2.5">Decision-makers{% if r.people_status == 'linkedin' %} <span class="text-muted/60 normal-case font-normal tracking-normal">· via LinkedIn</span>{% elif r.people %} <span class="text-muted/60 normal-case font-normal tracking-normal">· via Apollo</span>{% endif %}</p>
     {% if r.people %}
     <ul class="space-y-3">
       {% for p in r.people %}
@@ -44,6 +44,9 @@
       </li>
       {% endfor %}
     </ul>
+    {% if r.people_status == 'linkedin' %}
+    <p class="mt-2.5 text-xs text-muted leading-relaxed">Names + LinkedIn shown. <b class="font-semibold text-ink">Work email</b> is fetched on request (Hunter / Apollo).</p>
+    {% endif %}
     {% elif r.people_status == 'gated' %}
     <div class="rounded-lg bg-amber-50 text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/25 text-xs px-3 py-2.5 leading-relaxed">
       Company profile shown above ✓ — revealing <b>CEO / Founder / CTO emails</b> needs an Apollo paid plan. Upgrade, then set <code class="font-mono">APOLLO_PEOPLE_ENABLED=true</code> and this same button delivers them.

@@ -22,6 +22,7 @@ import time
 from typing import Any, Optional
 
 import httpx
+from apify_client import ApifyClient
 
 from config import settings
 
@@ -239,21 +240,99 @@ def _enrich_people(
     return (leaders, "ok")
 
 
-def enrich_on_demand(company_domain: Optional[str], company_name: str) -> dict[str, Any]:
-    """One-company lookup for the "Reveal contacts" button: firmographics + leaders.
+# No-cookie LinkedIn "company employees" actor — proven to return a company's
+# leadership (name + title + LinkedIn URL) from just a company name or URL, with
+# NO LinkedIn login and NO paid Apollo plan. ~$0.01 per person, pay-per-hit.
+_LINKEDIN_EMPLOYEES_ACTOR = "apimaestro/linkedin-company-employees-scraper-no-cookies"
+# Leadership titles = the buying decision-makers. No quotes/parens — the actor's
+# boolean title filter is finicky with them (tested: plain "A OR B" works).
+_DM_TITLES = "CEO OR CTO OR CFO OR COO OR Founder OR President OR Owner OR Director"
 
-    Returns {"org": {...}|None, "people": [...], "people_status": str, "domain": str|None}.
-    Always tries the People API so it works the instant the plan is upgraded;
-    on a gated plan it returns the (free) org profile + people_status="gated".
+
+def _linkedin_decision_makers(
+    company_name: str, company_linkedin: Optional[str] = None, limit: int = 5
+) -> list[dict[str, Any]]:
+    """Decision-makers for a company via the no-cookie LinkedIn employees actor.
+
+    Returns ``[{name, title, linkedin_url, email, phone}]`` (email/phone None — a
+    later step fills the email). Works on the FREE Apollo plan because it runs
+    through the Apify token, not Apollo's gated People API. Fail-open: returns []
+    on any miss/error so the Reveal-contacts button never breaks.
     """
-    if not settings.APOLLO_API_KEY:
-        return {"org": None, "people": [], "people_status": "no_key", "domain": None}
+    if not settings.APIFY_API_TOKEN:
+        return []
+    identifier = (company_linkedin or company_name or "").strip()
+    if not identifier:
+        return []
+    try:
+        client = ApifyClient(settings.APIFY_API_TOKEN)
+        run = client.actor(_LINKEDIN_EMPLOYEES_ACTOR).call(
+            run_input={
+                "identifier": identifier,
+                "job_title": _DM_TITLES,
+                "max_employees": max(limit * 2, 10),
+            }
+        )
+        dataset_id = (
+            (run.get("defaultDatasetId") or run.get("default_dataset_id"))
+            if isinstance(run, dict)
+            else (getattr(run, "default_dataset_id", None) or getattr(run, "defaultDatasetId", None))
+        )
+        if not dataset_id:
+            return []
+        people: list[dict[str, Any]] = []
+        for item in client.dataset(dataset_id).iterate_items():
+            url = (item.get("profile_url") or "").strip()
+            name = (item.get("fullname") or "").strip()
+            if not url or not name:
+                continue  # skips the actor's "No employees found" placeholder row
+            if not url.startswith("http"):
+                url = "https://" + url.lstrip("/")
+            people.append({
+                "name": name,
+                "title": (item.get("headline") or "").strip(),
+                "linkedin_url": url,
+                "email": None,
+                "phone": None,
+            })
+            if len(people) >= limit:
+                break
+        logger.info("LinkedIn decision-makers for '%s': %d found", identifier, len(people))
+        return people
+    except Exception as exc:  # noqa: BLE001 - fail-open
+        logger.error("LinkedIn decision-maker lookup failed for %s: %s", identifier, exc)
+        return []
+
+
+def enrich_on_demand(company_domain: Optional[str], company_name: str) -> dict[str, Any]:
+    """One-company lookup for the "Reveal contacts" button. Layered, best-effort:
+
+    1. Apollo org firmographics (free) — company info + address (needs a domain).
+    2. Apollo People (paid/gated) — verified email + phone when the plan allows.
+    3. Fallback — no-cookie LinkedIn employees actor: decision-maker name + title
+       + LinkedIn URL, which works on the FREE Apollo plan (via the Apify token).
+
+    Returns {"org", "people", "people_status", "domain"}. people_status:
+    'ok' (Apollo emails) | 'linkedin' (names + LinkedIn, email pending) | 'none'.
+    """
     domain = _bare_domain(company_domain)
-    if not domain:
-        return {"org": None, "people": [], "people_status": "no_domain", "domain": None}
-    with httpx.Client(timeout=30.0) as client:
-        org = _enrich_org(client, domain)
-        people, status = _enrich_people(client, domain, company_name, settings.APOLLO_MAX_PEOPLE)
+    org: Optional[dict[str, Any]] = None
+    people: list[dict[str, Any]] = []
+    status = "none"
+
+    if settings.APOLLO_API_KEY and domain:
+        with httpx.Client(timeout=30.0) as client:
+            org = _enrich_org(client, domain)
+            people, status = _enrich_people(client, domain, company_name, settings.APOLLO_MAX_PEOPLE)
+
+    # No contactable people from Apollo (gated / none / no key / no domain) →
+    # fall back to the no-cookie LinkedIn actor so we still surface the CEO/CTO.
+    if not people:
+        company_li = (org or {}).get("org_linkedin")
+        li = _linkedin_decision_makers(company_name, company_li, settings.APOLLO_MAX_PEOPLE)
+        if li:
+            people, status = li, "linkedin"
+
     return {"org": org, "people": people, "people_status": status, "domain": domain}
 
 
