@@ -67,10 +67,12 @@ def _resolve(user: dict[str, Any], email: str) -> dict[str, Any]:
         profile = None
 
     if profile is None:
-        # Table missing / no row. If tenancy isn't configured yet (no operator
-        # emails set), we're bootstrapping → operator. Once tenancy is live,
-        # an unknown user gets an empty workspace rather than the whole pool.
-        return _operator() if not settings.OPERATOR_EMAILS else _member({}, None)
+        # Unknown user (no profile row yet) → member with NO workspace. Never an
+        # operator. Operator access is granted ONLY by OPERATOR_EMAILS (checked
+        # above) or an explicit role='admin' profile (checked below). The old
+        # code granted operator here whenever OPERATOR_EMAILS was empty, which
+        # silently turned every new Google sign-in into a full admin on prod.
+        return _member({}, None)
 
     if (profile.get("role") or "").lower() == "admin":
         return _operator(role="admin")
