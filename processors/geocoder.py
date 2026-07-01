@@ -319,3 +319,9 @@ def geocode_city(location: Optional[str]) -> Optional[tuple[float, float]]:
     """
     canon = canonical_city(location)
     return _COORDS[canon] if canon else None
+
+
+def known_cities() -> list[str]:
+    """Sorted, display-cased city names (canonical + common aliases) for the
+    pipeline city-search autocomplete. Every name geocodes + city-filters."""
+    return sorted({n.title() for n in (set(_COORDS) | set(_ALIASES))})

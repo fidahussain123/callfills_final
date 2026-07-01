@@ -53,8 +53,15 @@
       </div>
       <div>
         <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">Cities</label>
-        <input name="cities" placeholder="bangalore, mumbai"
-               class="w-full rounded-lg bg-canvas border border-edge px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
+        <div class="relative" id="cityAc">
+          <svg class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="9" cy="9" r="6" /><path d="M14 14l4 4" stroke-linecap="round" />
+          </svg>
+          <input name="cities" id="cityInput" autocomplete="off" placeholder="Search a city…"
+                 class="w-full rounded-lg bg-canvas border border-edge pl-9 pr-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
+          <ul id="citySuggest" class="hidden absolute z-30 mt-1 w-full max-h-52 overflow-auto rounded-lg border border-edge bg-panel shadow-lift text-sm py-1"></ul>
+        </div>
+        <p class="mt-1 text-[11px] text-muted">Pick one or more — separated automatically.</p>
       </div>
     </div>
     <div class="grid grid-cols-2 gap-3">
@@ -253,6 +260,38 @@
     }
     if (sel) sel.addEventListener("change", sync);
     sync();
+  })();
+
+  /* City search-with-suggestions: type a location → filtered dropdown from the
+     known-city list; click to add (multiple cities separated automatically). */
+  (function () {
+    var CITIES = {{ known_cities | tojson }};
+    var input = document.getElementById("cityInput");
+    var box = document.getElementById("citySuggest");
+    if (!input || !box) return;
+    function lastSeg() { var p = input.value.split(","); return p[p.length - 1].trim().toLowerCase(); }
+    function hide() { box.classList.add("hidden"); box.innerHTML = ""; }
+    function show() {
+      var seg = lastSeg();
+      if (!seg) return hide();
+      var m = CITIES.filter(function (c) { return c.toLowerCase().indexOf(seg) !== -1; }).slice(0, 8);
+      if (!m.length) return hide();
+      box.innerHTML = m.map(function (c) {
+        return '<li class="px-3 py-2 cursor-pointer hover:bg-brand/10 text-slate-700 dark:text-slate-200" data-city="' + c + '">' + c + "</li>";
+      }).join("");
+      box.classList.remove("hidden");
+    }
+    input.addEventListener("input", show);
+    input.addEventListener("focus", show);
+    input.addEventListener("blur", function () { setTimeout(hide, 150); });
+    box.addEventListener("mousedown", function (e) {
+      var li = e.target.closest("li"); if (!li) return;
+      e.preventDefault();
+      var parts = input.value.split(",").map(function (s) { return s.trim(); });
+      parts[parts.length - 1] = li.getAttribute("data-city");
+      input.value = parts.filter(Boolean).join(", ");
+      hide(); input.focus();
+    });
   })();
 </script>
 {% endblock %}

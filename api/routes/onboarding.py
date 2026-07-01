@@ -61,6 +61,13 @@ _SOURCE_CATALOG: list[tuple[str, str, str]] = [
 _SOURCE_KEYS = {key for key, _, _ in _SOURCE_CATALOG}
 
 
+def _known_cities() -> list[str]:
+    """City list for the create-form location autocomplete."""
+    from processors.geocoder import known_cities
+
+    return known_cities()
+
+
 def _vertical_sources() -> dict[str, list[str]]:
     """Default (pre-checked) sources per vertical, for the form's JS sync."""
     from verticals.base_vertical import get_vertical_config
@@ -190,6 +197,7 @@ def _render_list(
             "supabase_ready": _supabase_ready(),
             "source_catalog": _SOURCE_CATALOG,
             "vertical_sources": _vertical_sources(),
+            "known_cities": _known_cities(),
             "notice": notice,
             "error": error,
         },
