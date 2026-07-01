@@ -153,14 +153,16 @@
     var it = (box._items || [])[+li.getAttribute("data-i")];
     var parts = input.value.split(",").map(function (s) { return s.trim(); });
     parts[parts.length - 1] = it.label.split(",")[0];
-    input.value = parts.filter(Boolean).join(", ");
-    box.classList.add("hidden");
-    if (it.ll) { center = it.ll; openMap(); }
-    else {
-      fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(it.label.split(",")[0]))
-        .then(function (r) { return r.json(); })
-        .then(function (d) { if (d && d[0]) { center = [+d[0].lat, +d[0].lon]; openMap(); } });
-    }
+    // Trailing ", " so you can immediately search + add the NEXT city/country.
+    input.value = parts.filter(Boolean).join(", ") + ", ";
+    box.classList.add("hidden"); input.focus();
+    // The map is a single focused area; the city LIST handles multiple
+    // cities/countries independently — so only move the map if it's already on.
+    function place(ll) { center = ll; if (toggle.checked) withLeaflet(init); }
+    if (it.ll) place(it.ll);
+    else fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(it.label.split(",")[0]))
+           .then(function (r) { return r.json(); })
+           .then(function (d) { if (d && d[0]) place([+d[0].lat, +d[0].lon]); });
   });
 })();
 </script>
