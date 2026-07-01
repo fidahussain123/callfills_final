@@ -85,6 +85,10 @@ class Settings:
         self.GROQ_API_KEY: str | None = _get("GROQ_API_KEY")
         self.GROQ_BASE_URL: str = _get("GROQ_BASE_URL", "https://api.groq.com/openai/v1")  # type: ignore[assignment]
         self.GROQ_MODEL: str = _get("GROQ_MODEL", "llama-3.3-70b-versatile")  # type: ignore[assignment]
+        # The company-qualify step is a high-volume classify/extract job, not
+        # deep reasoning — run it on a lighter, faster, higher-rate-limit model
+        # so big runs don't crawl. 8b-instant has ~5x the free-tier TPM of 70b.
+        self.AI_QUALIFY_MODEL: str = _get("AI_QUALIFY_MODEL", "llama-3.1-8b-instant")  # type: ignore[assignment]
         self.AI_VERIFY_ENABLED: bool = _get("AI_VERIFY_ENABLED", "true").lower() in (  # type: ignore[union-attr]
             "1",
             "true",

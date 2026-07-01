@@ -32,14 +32,14 @@ from config import settings
 
 logger = logging.getLogger("lead-intel.processors.ai_qualify")
 
-_BATCH_SIZE = 12          # companies per Groq call
-_MAX_CONCURRENCY = 1      # sequential: free-tier TPM limits punish parallelism
+_BATCH_SIZE = 20          # companies per call (bigger = fewer round-trips)
+_MAX_CONCURRENCY = 3      # 8b-instant's higher TPM lets us run batches in parallel
 _TIMEOUT = 45.0
-_MAX_TEXT_CHARS = 350     # per-signal snippet cap (headline carries the signal)
-_MAX_SNIPPETS = 2         # signals quoted per company
+_MAX_TEXT_CHARS = 200     # per-signal snippet cap (headline carries the signal)
+_MAX_SNIPPETS = 1         # one signal quoted per company keeps tokens (=time) low
 _MAX_RETRIES = 4
 _RETRY_BASE_DELAY = 3.0
-_PACE_DELAY = 1.5         # seconds between sequential batches (smooths TPM)
+_PACE_DELAY = 0.3         # brief gap between batches (small model has TPM headroom)
 
 # Sources whose companies are pre-verified directories — never AI-gated.
 _DIRECTORY_SOURCES = {"google_maps", "indiamart"}
@@ -104,7 +104,7 @@ async def _call_groq(
 ) -> dict[int, dict[str, Any]]:
     """Qualify one batch; {id: verdict}. Retries 429/5xx, fails open to {}."""
     payload = {
-        "model": settings.GROQ_MODEL,
+        "model": settings.AI_QUALIFY_MODEL,
         "temperature": 0,
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
@@ -238,6 +238,6 @@ async def qualify_companies(
     logger.info(
         "AI qualify (%s): %d gated → %d kept, %d dropped, %d newly located · "
         "%d directory passthrough",
-        settings.GROQ_MODEL, len(gated), len(kept), dropped, located, len(passthrough),
+        settings.AI_QUALIFY_MODEL, len(gated), len(kept), dropped, located, len(passthrough),
     )
     return passthrough + kept
