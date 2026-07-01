@@ -162,7 +162,11 @@ def apply_icp(leads: list[dict[str, Any]], client: Optional[dict[str, Any]]) -> 
                 )
                 if not matched:
                     continue
-        if keywords:
+        # `keywords` on a DIRECTORY pipeline (Google Maps / IndiaMART) is the
+        # SEARCH category, already applied at scrape time — not a post-filter on
+        # the lead's name. Re-filtering here wrongly hides Maps leads (an agency
+        # named "Social Beelines" doesn't contain "marketing agency").
+        if keywords and vertical not in ("local_business", "b2b_suppliers"):
             hay = " ".join(
                 str(lead.get(k) or "") for k in ("company_name", "website", "location", "summary")
             ).lower()
