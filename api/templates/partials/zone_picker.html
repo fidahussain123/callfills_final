@@ -1,22 +1,26 @@
-{# Zone picker — draw a custom geographic search area for Google Maps pipelines.
-   Include INSIDE the create-pipeline <form>: it submits the drawn polygon as a
-   hidden ``geo_zone`` field (GeoJSON, [lng,lat] order — the Apify actor format).
-   Hidden unless the selected vertical uses google_maps (local_business). #}
-<div id="zone-picker" class="hidden rounded-lg border border-edge bg-canvas overflow-hidden">
-  <div class="px-3.5 py-2.5 flex items-center justify-between gap-2 border-b border-edge">
-    <div class="min-w-0">
-      <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Search zone <span class="text-muted/60 normal-case font-normal">(optional — overrides City)</span></p>
-      <p id="zone-status" class="text-[11px] text-muted mt-0.5 truncate">Click the map to outline your target area (3+ points)</p>
+{# Location picker — search ANY place (OpenStreetMap: cities, towns, villages) +
+   an optional map with a coverage-radius circle. Include INSIDE the create
+   <form>. The search box (#cityInput, in onboarding.html) drives the ICP
+   `cities` text; when "Show map" is on, the radius circle is written to the
+   hidden `geo_zone` field as a GeoJSON Polygon ([lng,lat]) — the Google Maps
+   actor's exact search area. The map is opt-in via the toggle. #}
+<div id="zone-picker" class="mt-2">
+  <label class="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+    <input type="checkbox" id="mapToggle" class="h-4 w-4 rounded border-edge text-brand focus:ring-2 focus:ring-brand/30" />
+    Show map &amp; set coverage radius
+    <span class="text-[11px] text-muted font-normal">(defines the exact area to scan)</span>
+  </label>
+
+  <div id="mapWrap" class="hidden mt-2 rounded-lg border border-edge bg-canvas overflow-hidden">
+    <div class="px-3.5 py-2.5 border-b border-edge flex items-center gap-3">
+      <span class="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted shrink-0">Radius</span>
+      <input type="range" id="radiusSlider" min="1" max="50" value="10" class="flex-1 accent-brand cursor-pointer" />
+      <span id="radiusLabel" class="text-xs font-semibold text-ink tabular-nums w-16 text-right shrink-0">10 km</span>
     </div>
-    <div class="flex items-center gap-1.5 shrink-0">
-      <button type="button" id="zone-center"
-              class="rounded-md border border-edge bg-panel hover:bg-surface text-ink text-[11px] font-semibold px-2.5 py-1.5 transition">Center on city</button>
-      <button type="button" id="zone-clear"
-              class="rounded-md border border-edge bg-panel hover:bg-surface text-rose-600 dark:text-rose-400 text-[11px] font-semibold px-2.5 py-1.5 transition">Clear</button>
-    </div>
+    <div id="zone-map" class="w-full relative z-0" style="height: clamp(220px, 38vh, 300px)"></div>
+    <p id="zone-status" class="px-3.5 py-2 text-[11px] text-muted border-t border-edge">Search a location above — the map centers there. Drag the pin or slide the radius to set your area.</p>
+    <input type="hidden" name="geo_zone" id="geo-zone-input" />
   </div>
-  <div id="zone-map" class="w-full relative z-0 cursor-crosshair" style="height: clamp(220px, 38vh, 280px)"></div>
-  <input type="hidden" name="geo_zone" id="geo-zone-input" />
 </div>
 
 <style>
@@ -32,14 +36,19 @@
 (function () {
   var wrap = document.getElementById("zone-picker");
   if (!wrap) return;
-  var sel = wrap.closest("form") ? wrap.closest("form").querySelector("select[name=vertical]") : null;
-  var mapEl = document.getElementById("zone-map");
-  var input = document.getElementById("geo-zone-input");
-  var status = document.getElementById("zone-status");
-  var pts = [], map = null, layer = null;
+  var input   = document.getElementById("cityInput");     // search box (onboarding.html)
+  var box     = document.getElementById("citySuggest");   // suggestions dropdown
+  var toggle  = document.getElementById("mapToggle");
+  var mapWrap = document.getElementById("mapWrap");
+  var mapEl   = document.getElementById("zone-map");
+  var slider  = document.getElementById("radiusSlider");
+  var rlabel  = document.getElementById("radiusLabel");
+  var status  = document.getElementById("zone-status");
+  var hidden  = document.getElementById("geo-zone-input");
+  var LOCAL   = {{ known_cities | tojson }};                // instant offline matches
+  var map = null, marker = null, circle = null, center = null, radiusKm = 10, timer = null;
 
-  // The gesture plugin's UMD build exposes `leafletGestureHandling` and does
-  // NOT self-register with Leaflet — wire the handler in ourselves.
+  // Gesture plugin's UMD build doesn't self-register with Leaflet — wire it in.
   function ensureGesture() {
     if (!window.L || !L.Map) return false;
     if (L.Map.prototype.options && "gestureHandling" in L.Map.prototype.options) return true;
@@ -50,108 +59,108 @@
     L.Map.addInitHook("addHandler", "gestureHandling", GH);
     return true;
   }
-
-  function refresh() {
-    if (layer) { map.removeLayer(layer); layer = null; }
-    if (pts.length === 1) {
-      layer = L.circleMarker(pts[0], { radius: 5, color: "#9a28ff", fillColor: "#9a28ff", fillOpacity: .9 }).addTo(map);
-    } else if (pts.length === 2) {
-      layer = L.polyline(pts, { color: "#9a28ff", weight: 2, dashArray: "6 6" }).addTo(map);
-    } else if (pts.length >= 3) {
-      layer = L.polygon(pts, { color: "#9a28ff", weight: 2, dashArray: "6 6", fillColor: "#9a28ff", fillOpacity: .08 }).addTo(map);
-    }
-    if (pts.length >= 3) {
-      // GeoJSON wants [lng, lat] and a closed ring (first point repeated last).
-      var ring = pts.map(function (p) { return [p[1], p[0]]; });
-      ring.push(ring[0]);
-      input.value = JSON.stringify({ type: "Polygon", coordinates: [ring] });
-      status.textContent = pts.length + " points · zone set ✓ — only this area will be scraped";
-      status.style.color = "#10b981";
-    } else {
-      input.value = "";
-      status.textContent = pts.length
-        ? pts.length + " point(s) — add " + (3 - pts.length) + " more to close the zone"
-        : "Click the map to outline your target area (3+ points)";
-      status.style.color = "";
-    }
-  }
-
-  // Small API (also used by automated tests).
-  window._cfZone = {
-    addPoint: function (lat, lng) { pts.push([lat, lng]); refresh(); },
-    clear: function () { pts = []; refresh(); },
-    value: function () { return input.value; }
-  };
-
-  function init() {
-    if (map) { setTimeout(function () { map.invalidateSize(); }, 60); return; }
-    mapEl.classList.add("cf-map");
-    map = L.map(mapEl, {
-      gestureHandling: ensureGesture(),
-      scrollWheelZoom: false,
-      touchZoom: true,
-      tap: true,
-      zoomSnap: 0.5
-    }).setView([12.9716, 77.5946], 11); // default: Bangalore
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-    }).addTo(map);
-    map.on("click", function (e) { window._cfZone.addPoint(e.latlng.lat, e.latlng.lng); });
-    refresh();
-  }
-
   function withLeaflet(fn) {
-    function loadCss(id, href) {
-      if (document.getElementById(id)) return;
-      var l = document.createElement("link"); l.id = id; l.rel = "stylesheet"; l.href = href;
-      document.head.appendChild(l);
-    }
-    function loadJs(id, src, cb) {
-      var ex = document.getElementById(id);
-      if (ex) {
-        if (ex.dataset.loaded === "1") { cb(); }
-        else { ex.addEventListener("load", cb); ex.addEventListener("error", cb); }
-        return;
-      }
-      var s = document.createElement("script"); s.id = id; s.src = src;
-      s.onload = function () { s.dataset.loaded = "1"; cb(); };
-      s.onerror = function () { s.dataset.loaded = "1"; cb(); };
-      document.head.appendChild(s);
-    }
+    function loadCss(id, href) { if (document.getElementById(id)) return; var l = document.createElement("link"); l.id = id; l.rel = "stylesheet"; l.href = href; document.head.appendChild(l); }
+    function loadJs(id, src, cb) { var ex = document.getElementById(id); if (ex) { if (ex.dataset.loaded === "1") cb(); else { ex.addEventListener("load", cb); ex.addEventListener("error", cb); } return; } var s = document.createElement("script"); s.id = id; s.src = src; s.onload = function () { s.dataset.loaded = "1"; cb(); }; s.onerror = function () { s.dataset.loaded = "1"; cb(); }; document.head.appendChild(s); }
     loadCss("cf-leaflet-css", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css");
     loadCss("cf-leaflet-gh-css", "https://unpkg.com/leaflet-gesture-handling@1.2.2/dist/leaflet-gesture-handling.min.css");
     if (window.L && ensureGesture()) { fn(); return; }
     loadJs("cf-leaflet-js", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js", function () {
-      if (!window.L) return; // Leaflet CDN unavailable
+      if (!window.L) return;
       loadJs("cf-leaflet-gh-js", "https://unpkg.com/leaflet-gesture-handling@1.2.2/dist/leaflet-gesture-handling.min.js", fn);
     });
   }
 
-  function toggle() {
-    var on = sel ? sel.value === "local_business" : true;
-    wrap.classList.toggle("hidden", !on);
-    if (on) withLeaflet(init);
+  // Coverage circle -> GeoJSON polygon ([lng,lat], closed ring).
+  function circlePoly(c, km) {
+    var pts = [], R = 6371, d = km / R, lat = c[0] * Math.PI / 180, lng = c[1] * Math.PI / 180;
+    for (var i = 0; i <= 48; i++) {
+      var b = 2 * Math.PI * i / 48;
+      var la = Math.asin(Math.sin(lat) * Math.cos(d) + Math.cos(lat) * Math.sin(d) * Math.cos(b));
+      var ln = lng + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(lat), Math.cos(d) - Math.sin(lat) * Math.sin(la));
+      pts.push([ln * 180 / Math.PI, la * 180 / Math.PI]);
+    }
+    pts.push(pts[0]);
+    return { type: "Polygon", coordinates: [pts] };
   }
-  if (sel) sel.addEventListener("change", toggle);
-  toggle();
+  function writeZone() {
+    if (!center) { hidden.value = ""; return; }
+    hidden.value = JSON.stringify(circlePoly(center, radiusKm));
+    var area = Math.round(Math.PI * radiusKm * radiusKm);
+    status.textContent = "Covers ~" + radiusKm + " km radius (~" + area + " km²) — only this area is scanned.";
+    status.style.color = "#10b981";
+  }
+  function draw() {
+    if (!map || !center) return;
+    if (marker) marker.setLatLng(center);
+    else { marker = L.marker(center, { draggable: true }).addTo(map); marker.on("dragend", function (ev) { var ll = ev.target.getLatLng(); center = [ll.lat, ll.lng]; draw(); }); }
+    if (circle) circle.setLatLng(center).setRadius(radiusKm * 1000);
+    else circle = L.circle(center, { radius: radiusKm * 1000, color: "#9a28ff", fillColor: "#9a28ff", fillOpacity: .12, weight: 2 }).addTo(map);
+    try { map.fitBounds(circle.getBounds(), { padding: [24, 24] }); } catch (e) {}
+    writeZone();
+  }
+  function init() {
+    if (map) { setTimeout(function () { map.invalidateSize(); if (center) draw(); }, 60); return; }
+    mapEl.classList.add("cf-map");
+    map = L.map(mapEl, { gestureHandling: ensureGesture(), scrollWheelZoom: false, zoomSnap: 0.5 })
+           .setView(center || [20.59, 78.96], center ? 11 : 4); // default: whole India
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+    map.on("click", function (e) { center = [e.latlng.lat, e.latlng.lng]; draw(); });
+    setTimeout(function () { map.invalidateSize(); if (center) draw(); }, 60);
+  }
+  function openMap() { if (!toggle.checked) { toggle.checked = true; } mapWrap.classList.remove("hidden"); withLeaflet(init); }
 
-  document.getElementById("zone-clear").addEventListener("click", function (e) {
-    e.preventDefault(); window._cfZone.clear();
+  toggle.addEventListener("change", function () {
+    mapWrap.classList.toggle("hidden", !toggle.checked);
+    if (toggle.checked) withLeaflet(init);
+    else hidden.value = "";  // map off → no drawn zone; the City text still filters
   });
-  document.getElementById("zone-center").addEventListener("click", function (e) {
-    e.preventDefault();
-    if (!map) return;
-    var form = wrap.closest("form");
-    var cityInput = form ? form.querySelector("input[name=cities]") : null;
-    var city = ((cityInput && cityInput.value) || "").split(",")[0].trim();
-    if (!city) { status.textContent = "Type a city in the Cities field first, then center."; return; }
-    fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(city + ", India"))
-      .then(function (r) { return r.json(); })
-      .then(function (res) {
-        if (res && res[0]) map.setView([+res[0].lat, +res[0].lon], 12);
-        else status.textContent = "Couldn't find “" + city + "” — pan the map manually.";
-      })
-      .catch(function () { status.textContent = "Geocoding unavailable — pan the map manually."; });
+  slider.addEventListener("input", function () { radiusKm = +slider.value; rlabel.textContent = radiusKm + " km"; draw(); });
+
+  /* ---- Search ANY place via OpenStreetMap (Photon), local list as fallback ---- */
+  function render(items) {
+    if (!items.length) { box.classList.add("hidden"); box.innerHTML = ""; return; }
+    box.innerHTML = items.map(function (it, i) {
+      return '<li data-i="' + i + '" class="px-3 py-2 cursor-pointer hover:bg-brand/10 text-slate-700 dark:text-slate-200 truncate">' + it.label + "</li>";
+    }).join("");
+    box._items = items; box.classList.remove("hidden");
+  }
+  function localMatches(q) { return LOCAL.filter(function (c) { return c.toLowerCase().indexOf(q) !== -1; }).slice(0, 4).map(function (c) { return { label: c, ll: null }; }); }
+  function suggest() {
+    var q = (input.value.split(",").pop() || "").trim();
+    if (q.length < 2) { render([]); return; }
+    render(localMatches(q.toLowerCase()));  // instant
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      fetch("https://photon.komoot.io/api/?q=" + encodeURIComponent(q) + "&limit=6&lang=en&osm_tag=place")
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var f = (d.features || []).map(function (ft) {
+            var p = ft.properties || {}, g = ft.geometry || {};
+            var nm = [p.name, (p.city && p.city !== p.name) ? p.city : null, p.state, p.country].filter(Boolean).join(", ");
+            return { label: nm, ll: g.coordinates ? [g.coordinates[1], g.coordinates[0]] : null };
+          }).filter(function (x) { return x.label; });
+          render(f.length ? f : localMatches(q.toLowerCase()));
+        })
+        .catch(function () { /* keep local matches */ });
+    }, 300);
+  }
+  input.addEventListener("input", suggest);
+  input.addEventListener("focus", suggest);
+  input.addEventListener("blur", function () { setTimeout(function () { box.classList.add("hidden"); }, 160); });
+  box.addEventListener("mousedown", function (e) {
+    var li = e.target.closest("li"); if (!li) return; e.preventDefault();
+    var it = (box._items || [])[+li.getAttribute("data-i")];
+    var parts = input.value.split(",").map(function (s) { return s.trim(); });
+    parts[parts.length - 1] = it.label.split(",")[0];
+    input.value = parts.filter(Boolean).join(", ");
+    box.classList.add("hidden");
+    if (it.ll) { center = it.ll; openMap(); }
+    else {
+      fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(it.label.split(",")[0]))
+        .then(function (r) { return r.json(); })
+        .then(function (d) { if (d && d[0]) { center = [+d[0].lat, +d[0].lon]; openMap(); } });
+    }
   });
 })();
 </script>
