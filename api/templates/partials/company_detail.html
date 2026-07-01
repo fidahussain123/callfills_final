@@ -20,8 +20,10 @@
   <!-- Header -->
   <div class="sticky top-0 bg-panel/95 backdrop-blur border-b border-edge px-6 py-5 flex items-start justify-between">
     <div class="flex items-start gap-3 min-w-0">
-      <span class="grid place-items-center h-11 w-11 rounded-xl bg-brand/10 text-brand dark:text-brandlight text-lg font-bold shrink-0 ring-1 ring-brand/15 mt-0.5">
+      {% set _logod = ((company.company_domain or company.website or '')|replace('https://','')|replace('http://','')|replace('www.','')).split('/')[0] %}
+      <span class="relative grid place-items-center h-11 w-11 rounded-xl bg-brand/10 text-brand dark:text-brandlight text-lg font-bold shrink-0 ring-1 ring-brand/15 mt-0.5 overflow-hidden">
         {{ (company.company_name or '?')[:1] | upper }}
+        {% if _logod %}<img src="https://logo.clearbit.com/{{ _logod }}" alt="" loading="lazy" class="absolute inset-0 h-full w-full object-contain bg-white p-1" onerror="this.remove()">{% endif %}
       </span>
       <div class="min-w-0">
         <div class="flex items-center gap-3 flex-wrap">
