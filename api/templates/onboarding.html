@@ -273,12 +273,36 @@
     var form = document.querySelector('form[action="/pipelines/create"]');
     if (!form) return;
     var sel = form.querySelector('select[name="vertical"]');
+    var zone = document.getElementById("zone-picker");   // the map + radius block
+    // Friendly advisor query per source (empty = don't suggest actors, e.g. free RSS).
+    var ADVQ = { google_maps: "", wellfound: "wellfound", rss_feeds: "", crunchbase: "crunchbase",
+      indiamart: "indiamart", indeed: "indeed jobs", naukri: "naukri", linkedin_jobs: "linkedin jobs",
+      reddit: "reddit", twitter: "twitter", facebook_ads: "facebook ads" };
+    function boxes() { return form.querySelectorAll('input[name="sources"]'); }
+    function mapsOn() { var on = false; boxes().forEach(function (cb) { if (cb.value === "google_maps" && cb.checked) on = true; }); return on; }
+    function updateMap() {
+      if (!zone) return;
+      var on = mapsOn();
+      zone.classList.toggle("hidden", !on);   // map/radius appears ONLY for Google Maps
+      if (!on) {
+        var t = document.getElementById("mapToggle"); if (t) t.checked = false;
+        var w = document.getElementById("mapWrap"); if (w) w.classList.add("hidden");
+        var g = document.getElementById("geo-zone-input"); if (g) g.value = "";
+      }
+    }
     function sync() {
       var defs = (sel && V_SOURCES[sel.value]) || [];
-      form.querySelectorAll('input[name="sources"]').forEach(function (cb) {
-        cb.checked = defs.indexOf(cb.value) !== -1;
-      });
+      boxes().forEach(function (cb) { cb.checked = defs.indexOf(cb.value) !== -1; });
+      updateMap();
     }
+    // User toggling a tool: refresh the map, and for a non-Maps source auto-ask
+    // the AI advisor which actor to use + what it costs.
+    boxes().forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        updateMap();
+        if (cb.checked && cb.value !== "google_maps" && ADVQ[cb.value]) cfAskActor(ADVQ[cb.value]);
+      });
+    });
     if (sel) sel.addEventListener("change", sync);
     sync();
   })();
