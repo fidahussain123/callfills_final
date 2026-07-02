@@ -141,10 +141,12 @@ def _build_icp(
             for k in ("job_titles", "max_followers", "min_followers", "recently_posted"):
                 if brief.get(k) is not None:
                     f[k] = brief[k]
-            if brief.get("locations") and not _csv(cities):
-                cities = ", ".join(brief["locations"])
-            if brief.get("industries") and not _csv(industries):
-                industries = ", ".join(brief["industries"])
+            def _clean(vals):
+                return [str(v).strip() for v in vals if str(v).strip().lower() not in ("", "null", "none")]
+            if _clean(brief.get("locations") or []) and not _csv(cities):
+                cities = ", ".join(_clean(brief["locations"]))
+            if _clean(brief.get("industries") or []) and not _csv(industries):
+                industries = ", ".join(_clean(brief["industries"]))
         except Exception:  # noqa: BLE001 - parsing is best-effort
             pass
     zone = _parse_zone(geo_zone)
@@ -301,8 +303,11 @@ async def preview_pipeline(
             "actor_id": filters.get("actor_id"),
             "sources": filters.get("sources"),
         }
+        # Fetch a wider net — low-follower people are a minority, so the
+        # follower filter drops most; scanning ~30 leaves a usable handful.
+        search["max_results"] = 30
         try:
-            leads = await preview_run(vertical=vertical, search=search, max_results=10)
+            leads = await preview_run(vertical=vertical, search=search, max_results=30)
         except Exception as exc:  # noqa: BLE001
             logger.error("LinkedIn People preview failed: %s", exc)
             leads = []

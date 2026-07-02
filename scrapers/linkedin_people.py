@@ -121,8 +121,17 @@ class LinkedInPeopleScraper(ApifyScraper):
             pos = pos[0] if pos else {}
         if not isinstance(pos, dict):
             pos = {}
-        emails = it.get("emails")
-        email = it.get("email") or (emails[0] if isinstance(emails, list) and emails else None)
+        # harvestapi returns email as {"email": "...", "qualityScore": N} or a
+        # plain string; and `emails` as a list of either. Coerce to a string.
+        def _email_str(v: Any) -> Optional[str]:
+            if isinstance(v, dict):
+                return v.get("email")
+            return v if isinstance(v, str) else None
+        email = _email_str(it.get("email"))
+        if not email:
+            elist = it.get("emails")
+            if isinstance(elist, list) and elist:
+                email = _email_str(elist[0])
         return NormalizedSignal(
             company_name=name,
             company_domain=None,
