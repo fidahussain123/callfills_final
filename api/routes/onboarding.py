@@ -120,6 +120,7 @@ def _build_icp(
     signal_focus: Optional[list[str]] = None,
     geo_zone: str = "",
     sources: Optional[list[str]] = None,
+    actor_id: str = "",
 ) -> dict[str, Any]:
     """Assemble a pipeline's config/ICP blob (stored in ``clients.filters`` jsonb).
 
@@ -153,7 +154,19 @@ def _build_icp(
     types = [t for s in (signal_focus or []) for t in _SIGNAL_MAP.get(s, [])]
     if types:
         f["signal_types"] = types
+    # Actor chosen via the AI Scraper Advisor (Apify actor id, e.g.
+    # "compass/crawler-google-places") — the preferred scraper for this pipeline.
+    if (actor_id or "").strip():
+        f["actor_id"] = actor_id.strip()
     return f
+
+
+def advisor_result(query: str) -> dict[str, Any]:
+    """Run the AI Scraper Advisor for a source/need query (Apify store + Groq)."""
+    from processors.actor_advisor import advise
+
+    q = (query or "").strip()
+    return advise(q, limit=6) if q else {"query": "", "actors": [], "note": ""}
 
 
 def _supabase_ready() -> bool:
@@ -292,6 +305,7 @@ def create_pipeline(
     signal_focus: list[str] = Form([]),
     geo_zone: str = Form(""),
     sources: list[str] = Form([]),
+    actor_id: str = Form(""),
     assign_me: Optional[str] = Form(None),
 ):
     """Create a pipeline (a client + described ICP), optionally assigning the operator."""
@@ -304,7 +318,7 @@ def create_pipeline(
     filters = _build_icp(
         description=description, industries=industries, cities=cities, keywords=keywords,
         employee_min=employee_min, employee_max=employee_max, signal_focus=signal_focus,
-        geo_zone=geo_zone, sources=sources,
+        geo_zone=geo_zone, sources=sources, actor_id=actor_id,
     )
     payload = {
         "name": name.strip(),
@@ -326,6 +340,17 @@ def create_pipeline(
         notice += " You're now assigned to it." if ok else f" (couldn't assign you: {err})"
     logger.info("Created pipeline %s (%s)", name, row.get("id"))
     return _render_list(request, user, tenant, notice=notice)
+
+
+@router.post("/pipelines/advisor", response_class=HTMLResponse)
+def pipeline_advisor(request: Request, q: str = Form(""), user: dict = Depends(require_user)):
+    """AI Scraper Advisor — best Apify actors + real costs for a source/need."""
+    _tenant, redirect = _require_operator(user)
+    if redirect:
+        return redirect
+    return templates.TemplateResponse(
+        request, "partials/actor_advisor.html", {"r": advisor_result(q)}
+    )
 
 
 @router.post("/pipelines/assign", response_class=HTMLResponse)

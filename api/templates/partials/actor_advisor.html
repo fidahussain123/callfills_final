@@ -1,0 +1,38 @@
+{# AI Scraper Advisor result — real Apify actors, live cost, AI recommendation.
+   Swapped into #advisorResult by the "Ask AI" button. "Use this" calls the
+   global cfPickActor() (defined in onboarding.html) to store the actor. #}
+{% if not r.actors %}
+<div class="rounded-lg border border-edge bg-surface px-3.5 py-3 text-xs text-muted">
+  {% if r.query %}No actors found for “{{ r.query }}”. Try a platform keyword — “google maps”, “linkedin”, “instagram”, “indiamart”.{% else %}Pick a source above or type one (e.g. “google maps”), then Ask AI.{% endif %}
+</div>
+{% else %}
+{% if r.note %}
+<div class="rounded-lg bg-brand/5 ring-1 ring-brand/15 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 mb-2">
+  <span class="font-semibold text-brand dark:text-brandlight">AI recommends:</span> {{ r.note }}
+</div>
+{% endif %}
+<ul class="space-y-2">
+  {% for a in r.actors %}
+  <li class="rounded-lg border {{ 'border-brand/50 bg-brand/[0.05]' if a.recommended else 'border-edge bg-canvas' }} px-3.5 py-2.5">
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <p class="text-sm font-semibold text-ink truncate">
+          {{ a.title }}
+          {% if a.recommended %}<span class="ml-1 align-middle rounded bg-brand text-white text-[10px] font-bold px-1.5 py-0.5 tracking-wide">AI PICK</span>{% endif %}
+        </p>
+        <p class="text-[11px] text-muted mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+          <span>👥 {{ "{:,}".format(a.users) }} users</span>
+          {% if a.rating %}<span>⭐ {{ a.rating }}</span>{% endif %}
+          <span class="font-semibold text-ink">💲 {% if a.cost_per_1k is not none %}${{ a.cost_per_1k }} / 1k results{% else %}{{ a.price_display }}{% endif %}</span>
+        </p>
+        {% if a.desc %}<p class="text-[11px] text-muted mt-1">{{ a.desc }}</p>{% endif %}
+        <p class="text-[10px] text-muted/70 mt-0.5 font-mono truncate">{{ a.id }}</p>
+      </div>
+      <button type="button"
+              onclick='cfPickActor({{ a.id|tojson }}, {{ a.title|tojson }}, {{ (("$" ~ a.cost_per_1k ~ "/1k") if a.cost_per_1k is not none else a.price_display)|tojson }})'
+              class="shrink-0 rounded-lg {{ 'bg-brand text-white hover:bg-brandmed' if a.recommended else 'border border-edge bg-panel hover:bg-surface text-ink' }} text-xs font-semibold px-3 py-1.5 transition">Use this</button>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}

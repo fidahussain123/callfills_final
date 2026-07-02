@@ -84,6 +84,27 @@
     {# Draw-a-zone map for Google Maps pipelines (hidden for intent verticals) #}
     {% include "partials/zone_picker.html" %}
 
+    {# AI Scraper Advisor — recommends the best Apify actor + real cost for a source #}
+    <div class="rounded-lg border border-edge bg-canvas p-3.5">
+      <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-2">AI Scraper Advisor <span class="text-muted/60 normal-case font-normal">· which actor to use &amp; what it costs</span></p>
+      <div class="flex flex-wrap gap-1.5 mb-2">
+        {% for s in ['google maps','linkedin','instagram','indiamart','twitter','jobs','crunchbase'] %}
+        <button type="button" onclick="cfAskActor('{{ s }}')" class="rounded-full border border-edge bg-panel hover:bg-surface text-muted hover:text-ink text-[11px] px-2.5 py-1 transition capitalize">{{ s }}</button>
+        {% endfor %}
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="advisorQ" name="q" autocomplete="off" placeholder="or type a source… e.g. google maps"
+               class="flex-1 rounded-lg bg-canvas border border-edge px-3.5 py-2 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
+        <button type="button" id="advisorBtn"
+                hx-post="/pipelines/advisor" hx-include="#advisorQ" hx-target="#advisorResult" hx-swap="innerHTML" hx-indicator="#advisorSpin"
+                class="shrink-0 rounded-lg bg-brand text-white hover:bg-brandmed text-sm font-semibold px-4 py-2 transition">Ask AI</button>
+      </div>
+      <div id="advisorSpin" class="htmx-indicator text-[11px] text-muted mt-1.5">Searching Apify + ranking actors…</div>
+      <div id="advisorResult" class="mt-2"></div>
+      <div id="actorSelected" class="hidden mt-2 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 ring-1 ring-emerald-200 dark:ring-emerald-500/25 text-emerald-800 dark:text-emerald-200 text-xs px-3 py-2"></div>
+      <input type="hidden" name="actor_id" id="actorId" />
+    </div>
+
     {# Per-pipeline tool toggles — whatever's on is exactly what this pipeline fetches #}
     {% macro tool_icon(key) %}
     {%- set tile = "grid place-items-center h-7 w-7 rounded-lg text-white shrink-0 ring-1 ring-black/5 dark:ring-white/15" -%}
@@ -262,5 +283,17 @@
     sync();
   })();
   /* City search + map/radius picker lives in partials/zone_picker.html. */
+
+  /* AI Scraper Advisor: chip → fill the query + fire "Ask AI". */
+  function cfAskActor(s) {
+    var i = document.getElementById("advisorQ");
+    if (i) { i.value = s; if (window.htmx) htmx.trigger(document.getElementById("advisorBtn"), "click"); }
+  }
+  /* Store the chosen actor on the form + show a confirmation. */
+  function cfPickActor(id, title, price) {
+    var f = document.getElementById("actorId"); if (f) f.value = id;
+    var el = document.getElementById("actorSelected");
+    if (el) { el.innerHTML = "✓ Scraper set: <b>" + title + "</b> · " + price + " <span class=\"opacity-70 font-mono\">(" + id + ")</span>"; el.classList.remove("hidden"); }
+  }
 </script>
 {% endblock %}
