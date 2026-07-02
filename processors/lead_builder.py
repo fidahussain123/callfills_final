@@ -134,15 +134,16 @@ def build_lead_card(
         contact_name=enrichment.get("contact_name"),
         contact_role=enrichment.get("contact_role"),
         email=enrichment.get("email") or company.get("email"),
-        linkedin_url=enrichment.get("linkedin_url") or enrichment.get("org_linkedin"),
+        linkedin_url=enrichment.get("linkedin_url") or enrichment.get("org_linkedin") or company.get("linkedin_url"),
         phone=company.get("phone") or enrichment.get("org_phone"),
         rating=company.get("rating"),
         review_count=company.get("review_count"),
-        category=company.get("category"),
+        category=company.get("category") or company.get("headline"),
         address=company.get("address"),
         maps_url=company.get("maps_url"),
         lat=company.get("lat"),
         lng=company.get("lng"),
+        followers=company.get("followers"),
         status="new",
     )
 
@@ -166,7 +167,7 @@ def build_lead_cards(
         # Directory listings (Google Maps, IndiaMART) are real businesses, not
         # time-bound posts — the staleness/mega-corp gate doesn't apply to them.
         is_directory = bool(
-            {"local_business", "supplier_listing"} & set(company.get("signal_types") or [])
+            {"local_business", "supplier_listing", "linkedin_profile"} & set(company.get("signal_types") or [])
         )
         # Quality gate: skip mega-corps, staffing firms, and stale-only signals.
         if not is_directory and quality_reject_reason(company, max_hiring_days=freshness_days):

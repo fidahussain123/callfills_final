@@ -132,6 +132,21 @@ def _build_icp(
     f: dict[str, Any] = {}
     if (description or "").strip():
         f["description"] = description.strip()
+        # The description DRIVES the fetch: AI-parse it into structured filters
+        # (job titles, max_followers, locations…) that the scrapers then use.
+        try:
+            from processors.brief_parser import parse_brief
+
+            brief = parse_brief(description)
+            for k in ("job_titles", "max_followers", "min_followers", "recently_posted"):
+                if brief.get(k) is not None:
+                    f[k] = brief[k]
+            if brief.get("locations") and not _csv(cities):
+                cities = ", ".join(brief["locations"])
+            if brief.get("industries") and not _csv(industries):
+                industries = ", ".join(brief["industries"])
+        except Exception:  # noqa: BLE001 - parsing is best-effort
+            pass
     zone = _parse_zone(geo_zone)
     if zone:
         f["custom_geolocation"] = zone
@@ -272,6 +287,24 @@ async def preview_pipeline(
             leads = await preview_run(vertical=vertical, search=search, max_results=8)
         except Exception as exc:  # noqa: BLE001
             logger.error("Maps preview failed: %s", exc)
+            leads = []
+        pool_size = len(leads)
+    elif "linkedin_people" in effective_sources:
+        from pipeline import preview_run  # live LinkedIn people search + follower filter
+
+        search = {
+            "job_titles": filters.get("job_titles") or filters.get("keywords") or [],
+            "cities": filters.get("cities") or [],
+            "industries": filters.get("industries") or [],
+            "max_followers": filters.get("max_followers"),
+            "employee_max": filters.get("employee_max"),
+            "actor_id": filters.get("actor_id"),
+            "sources": filters.get("sources"),
+        }
+        try:
+            leads = await preview_run(vertical=vertical, search=search, max_results=10)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("LinkedIn People preview failed: %s", exc)
             leads = []
         pool_size = len(leads)
     else:

@@ -36,6 +36,7 @@ _BUNDLED_MODULES = [
     "scrapers.reddit",
     "scrapers.twitter",
     "scrapers.google_maps",
+    "scrapers.linkedin_people",
     "scrapers.hackernews",
     "scrapers.crunchbase",
     "scrapers.indiamart",

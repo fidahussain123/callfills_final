@@ -188,6 +188,9 @@ class LeadCard(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
 
+    # LinkedIn People (person leads) — None for company leads.
+    followers: Optional[int] = None
+
     # Lifecycle
     status: str = "new"
     created_at: str = Field(default_factory=lambda: _utcnow().isoformat())

@@ -42,7 +42,7 @@ _RETRY_BASE_DELAY = 3.0
 _PACE_DELAY = 0.3         # brief gap between batches (small model has TPM headroom)
 
 # Sources whose companies are pre-verified directories — never AI-gated.
-_DIRECTORY_SOURCES = {"google_maps", "indiamart"}
+_DIRECTORY_SOURCES = {"google_maps", "indiamart", "linkedin_profile"}
 
 _SYSTEM_PROMPT = (
     "You are a B2B lead-qualification analyst. You receive deduplicated "

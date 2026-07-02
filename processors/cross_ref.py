@@ -129,6 +129,11 @@ def find_overlap(signals: list[NormalizedSignal]) -> list[dict[str, Any]]:
                 "category": _first_meta(group, "category"),
                 "address": _first_meta(group, "address"),
                 "maps_url": _first_meta(group, "maps_url"),
+                # LinkedIn People fields (person leads); None for company leads.
+                "followers": _first_meta(group, "followers"),
+                "connections": _first_meta(group, "connections"),
+                "linkedin_url": _first_meta(group, "linkedin_url"),
+                "headline": _first_meta(group, "headline"),
                 "lat": lat,
                 "lng": lng,
                 "signal_types": sorted(signal_types),

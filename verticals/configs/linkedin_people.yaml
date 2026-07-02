@@ -1,0 +1,33 @@
+# LinkedIn People vertical — find PEOPLE directly (founders, CTOs, CEOs), not
+# companies. Each lead is a person with their title, company, LinkedIn URL,
+# email and follower count. Filter by follower count (e.g. "under 1000") to find
+# low-follower decision-makers to pitch follower-growth / outreach services to.
+#
+# The pipeline's Keywords = job titles to search, Cities = LinkedIn location,
+# Company size (max) = startup headcount, and the Description drives the rest via
+# AI (incl. `max_followers`).
+
+name: linkedin_people
+display_name: "LinkedIn People"
+description: >
+  Founders, CTOs and CEOs pulled straight from LinkedIn — with title, company,
+  LinkedIn URL, email and follower count. Filter by follower count to target
+  low-follower decision-makers.
+
+sources:
+  - linkedin_people
+
+target_roles: []
+signal_keywords: []
+
+# People aren't scored on hiring/funding intent — a matched profile is the lead.
+scoring:
+  signal_linkedin_profile: 40
+
+min_score: 0
+
+# Profiles don't go stale like a job post.
+freshness_days: 3650
+
+filters:
+  job_titles: [Founder, Co-Founder, CEO, CTO]

@@ -23,8 +23,8 @@
   <ul class="mt-2.5 space-y-1.5 max-h-52 overflow-y-auto scroll-thin">
     {% for l in leads[:12] %}
     <li class="flex items-center justify-between gap-3 text-xs">
-      <span class="text-ink font-medium truncate">{{ l.company_name }}</span>
-      <span class="text-muted whitespace-nowrap truncate max-w-[55%]">{{ (l.summary or '')[:40] }}</span>
+      <span class="text-ink font-medium truncate">{{ l.company_name }}{% if l.linkedin_url %} <a href="{{ l.linkedin_url }}" target="_blank" class="text-brand dark:text-brandlight hover:underline">in↗</a>{% endif %}</span>
+      <span class="text-muted whitespace-nowrap truncate max-w-[58%]">{% if l.followers is not none %}<b class="text-ink tabular-nums">{{ l.followers }}</b> followers · {% endif %}{{ (l.category or l.summary or '')[:38] }}</span>
     </li>
     {% endfor %}
   </ul>
