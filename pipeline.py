@@ -111,6 +111,13 @@ def _configure_scrapers(scrapers: list[BaseScraper], vertical_config: dict[str, 
     """Inject per-pipeline search params (category/cities) into scrapers that
     accept them (e.g. Google Maps). Sources without ``configure`` are untouched."""
     search_cfg = {**(vertical_config.get("filters") or {}), **(search or {})}
+    # A pipeline's own keywords/categories ARE the Google Maps search term, and
+    # must override the vertical's default `categories` (e.g. local_business's
+    # default "barber"). Otherwise a "marketing agency" pipeline would inherit
+    # the default category and scrape the wrong businesses.
+    pipe_cats = (search or {}).get("categories") or (search or {}).get("keywords")
+    if pipe_cats:
+        search_cfg["categories"] = pipe_cats
     for scraper in scrapers:
         if hasattr(scraper, "configure"):
             try:
