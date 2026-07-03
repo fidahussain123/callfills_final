@@ -108,6 +108,8 @@ def _enrich_org(client: httpx.Client, domain: str) -> Optional[dict[str, Any]]:
         "org_industry": org.get("industry"),
         "org_employees": org.get("estimated_num_employees"),
         "org_linkedin": org.get("linkedin_url"),
+        "org_twitter": org.get("twitter_url"),
+        "org_facebook": org.get("facebook_url"),
         "org_website": org.get("website_url") or org.get("primary_domain"),
         "org_phone": phone,
         "org_founded": org.get("founded_year"),

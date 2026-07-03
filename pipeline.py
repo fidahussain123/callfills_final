@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -39,6 +40,12 @@ logger = logging.getLogger("lead-intel.pipeline")
 
 # Tracks the most recent run for the /health endpoint.
 LAST_RUN: dict[str, Optional[datetime]] = {"last_pipeline_run": None}
+
+# Serializes full pipeline runs across event loops/threads (scheduler sweep,
+# create-pipeline kickoff thread, manual run). Runs share RUN_STATUS and do
+# read-merge-write persistence, so two at once would race and lose leads.
+# A threading.Lock (acquired via asyncio.to_thread) works from any loop.
+_RUN_LOCK = threading.Lock()
 
 # Live progress of the current/last run, surfaced to the dashboard's scrape
 # animation (updated in-process as each source is fetched). Single-instance.
@@ -118,12 +125,20 @@ def _configure_scrapers(scrapers: list[BaseScraper], vertical_config: dict[str, 
     pipe_cats = (search or {}).get("categories") or (search or {}).get("keywords")
     if pipe_cats:
         search_cfg["categories"] = pipe_cats
+    # Per-source actor overrides from the advisor's "Use this" ({key: actor_id}).
+    # Applied AFTER configure so the operator's chosen actor always wins. Runs the
+    # exact actor picked; fail-safe (an incompatible actor just yields 0 leads).
+    overrides = (search or {}).get("actor_overrides") or {}
     for scraper in scrapers:
         if hasattr(scraper, "configure"):
             try:
                 scraper.configure(search_cfg)  # type: ignore[attr-defined]
             except Exception as exc:  # noqa: BLE001
                 logger.error("configure failed for %s: %s", type(scraper).__name__, exc)
+        key = getattr(scraper, "key", None) or getattr(scraper, "source_platform", None)
+        if isinstance(overrides, dict) and overrides.get(key) and hasattr(scraper, "actor_id"):
+            scraper.actor_id = overrides[key]  # type: ignore[attr-defined]
+            logger.info("Actor override: %s → %s", key, overrides[key])
 
 
 async def run_pipeline(
@@ -131,7 +146,22 @@ async def run_pipeline(
     vertical: str = "recruitment",
     search: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """Execute one full pipeline run and return summary statistics."""
+    """Execute one full pipeline run and return summary statistics.
+
+    Runs are serialized process-wide via ``_RUN_LOCK`` — see its comment.
+    """
+    await asyncio.to_thread(_RUN_LOCK.acquire)
+    try:
+        return await _run_pipeline_locked(lookback_days, vertical, search)
+    finally:
+        _RUN_LOCK.release()
+
+
+async def _run_pipeline_locked(
+    lookback_days: Optional[int],
+    vertical: str,
+    search: Optional[dict[str, Any]],
+) -> dict[str, Any]:
     lookback_days = lookback_days or settings.LOOKBACK_DAYS
     vertical_config = get_vertical_config(vertical)
     stats: dict[str, Any] = {
@@ -256,8 +286,10 @@ async def preview_run(
     )
     raw_signals = [sig for sublist in raw_lists for sig in sublist]
     normalized = normalizer.normalize_all(raw_signals)
-    deduped = deduplicator.filter_duplicates(normalized)
-    companies = cross_ref.find_overlap(deduped)
+    # NO cross-run dedup here: previews must be side-effect-free. Marking these
+    # companies "seen" (24h Redis TTL) would make the create-pipeline kickoff
+    # scrape that follows a preview drop every one of them → 0 leads.
+    companies = cross_ref.find_overlap(normalized)
     # Skip Apollo enrichment on previews — a test fetch shouldn't spend credits.
     return lead_builder.build_lead_cards(companies, scorer.score, vertical_config)
 

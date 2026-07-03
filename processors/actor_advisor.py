@@ -145,10 +145,46 @@ def _ai_rank(query: str, actors: list[dict[str, Any]]) -> tuple[Optional[str], s
         return (None, "")
 
 
+def _source_key(title: str, actor_id: str) -> str:
+    """Best-guess which internal scraper an Apify actor plugs into.
+
+    The form's "Use this" needs to know which Tools source to select + which
+    scraper's normalizer will parse the actor's output, so we map the actor's
+    title/id to one of our registry keys. Empty string = no confident match.
+    """
+    t = f"{title} {actor_id}".lower()
+    if "google" in t and ("map" in t or "place" in t):
+        return "google_maps"
+    if "linkedin" in t and ("job" in t or "vacan" in t or "hiring" in t):
+        return "linkedin_jobs"
+    if "linkedin" in t and ("profile" in t or "people" in t or "employee"
+                            in t or "person" in t or "lead" in t or "search" in t):
+        return "linkedin_people"
+    if "indeed" in t:
+        return "indeed"
+    if "wellfound" in t or "angellist" in t or "angel.co" in t:
+        return "wellfound"
+    if "naukri" in t:
+        return "naukri"
+    if "crunchbase" in t:
+        return "crunchbase"
+    if "indiamart" in t:
+        return "indiamart"
+    if "facebook" in t and "ad" in t:
+        return "facebook_ads"
+    if "twitter" in t or "x.com" in t or t.rstrip().endswith("/x"):
+        return "twitter"
+    if "linkedin" in t:
+        return "linkedin_people"  # generic LinkedIn → decision-maker search
+    return ""
+
+
 def advise(query: str, limit: int = 6) -> dict[str, Any]:
     """Full advisor: search the store, rank with AI, flag the recommended actor.
 
     Returns {"query", "actors": [...best-first, recommended flagged], "note"}.
+    Each actor carries ``source_key`` — the internal scraper it maps to — so the
+    form can select the right tool and apply the actor as a per-source override.
     """
     actors = search_store(query, limit)
     if not actors:
@@ -160,6 +196,7 @@ def advise(query: str, limit: int = 6) -> dict[str, Any]:
         note = note or "Top pick by usage + rating (AI unavailable)."
     for a in actors:
         a["recommended"] = a["id"] == best_id
+        a["source_key"] = _source_key(a.get("title") or "", a.get("id") or "")
     # Recommended first, then the rest.
     actors.sort(key=lambda x: not x["recommended"])
     return {"query": query, "actors": actors, "note": note}

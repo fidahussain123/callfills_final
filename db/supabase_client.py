@@ -173,22 +173,33 @@ def _pool_row(lead: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def replace_pool_leads(verticals: Any, leads: list[dict[str, Any]]) -> int:
-    """Upsert ``leads`` into ``lead_pool`` and drop now-absent rows per vertical.
+# A pool row is deleted only after this many days without being re-seen by any
+# run. Runs are per-pipeline slices of a vertical, so "not in this run" is NOT
+# evidence of staleness — one narrow pipeline must never wipe its vertical.
+_POOL_STALE_DAYS = 30
 
-    Mirrors the JSON store's per-vertical merge: rows for OTHER verticals are
-    left untouched, and for each vertical in this run the pool ends up exactly
-    matching the new set (upsert refreshes, delete-stale removes companies that
-    no longer appear). Returns the number of rows written. Fail-open: returns 0
-    and logs on any error so the run never aborts on a persistence hiccup.
+
+def replace_pool_leads(verticals: Any, leads: list[dict[str, Any]]) -> int:
+    """Upsert ``leads`` into ``lead_pool``; age out only truly stale rows.
+
+    Every run is a per-pipeline slice (kickoff scrape, one entry of the
+    scheduled sweep), so it never sees a vertical's whole universe. Upsert
+    refreshes what this run found (bumping ``updated_at``); rows are deleted
+    only when no run has re-seen them for ``_POOL_STALE_DAYS``. Returns the
+    number of rows written. Fail-open: returns 0 and logs on any error so the
+    run never aborts on a persistence hiccup.
     """
+    from datetime import datetime, timedelta, timezone
+
     client = get_client()
     # Dedupe by (company_name, vertical), keeping the highest-scored copy.
     best: dict[tuple[str, str], dict[str, Any]] = {}
+    now = datetime.now(timezone.utc)
     for lead in leads:
         row = _pool_row(lead)
         if not row["company_name"] or not row["vertical"]:
             continue
+        row["updated_at"] = now.isoformat()  # upsert must bump freshness
         key = (row["company_name"], row["vertical"])
         cur = best.get(key)
         if cur is None or row["score"] > cur["score"]:
@@ -199,12 +210,12 @@ def replace_pool_leads(verticals: Any, leads: list[dict[str, Any]]) -> int:
             client.table("lead_pool").upsert(
                 rows, on_conflict="company_name,vertical"
             ).execute()
-        for vertical in verticals:
-            names = [r["company_name"] for r in rows if r["vertical"] == vertical]
-            q = client.table("lead_pool").delete().eq("vertical", vertical)
-            if names:  # keep the refreshed rows, drop the vanished ones
-                q = q.not_.in_("company_name", names)
-            q.execute()
+        # Age-based cleanup for the verticals this run touched.
+        horizon = (now - timedelta(days=_POOL_STALE_DAYS)).isoformat()
+        for vertical in set(verticals):
+            client.table("lead_pool").delete().eq("vertical", vertical).lt(
+                "updated_at", horizon
+            ).execute()
         logger.info("lead_pool: wrote %d rows (verticals=%s)", len(rows), sorted(set(verticals)))
         return len(rows)
     except Exception as exc:  # noqa: BLE001

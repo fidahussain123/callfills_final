@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from typing import Any, Optional
 from urllib.parse import quote_plus
 
@@ -53,6 +54,7 @@ _SOURCE_CATALOG: list[tuple[str, str, str]] = [
     ("indeed", "Indeed", "job postings — fast & cheap"),
     ("naukri", "Naukri", "India job board — multi-run, costlier"),
     ("linkedin_jobs", "LinkedIn Jobs", "tech hiring — slower actor"),
+    ("linkedin_people", "LinkedIn People", "founders/CEOs/CTOs — decision-makers + emails"),
     ("twitter", "Twitter / X", "social intent — AI-filtered"),
     ("facebook_ads", "Facebook Ads", "ad activity — AI-filtered"),
 ]
@@ -109,6 +111,26 @@ def _parse_zone(geo_zone: Optional[str]) -> Optional[dict[str, Any]]:
     return data
 
 
+def _parse_overrides(raw: Optional[str]) -> dict[str, str]:
+    """Parse the form's ``actor_overrides`` JSON → {source_key: apify_actor_id}.
+
+    Only known registry source keys are kept, so a specific actor can be swapped
+    in per source (the "Use this" picks). Blank/invalid → {}.
+    """
+    if not raw or not raw.strip():
+        return {}
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    out: dict[str, str] = {}
+    if isinstance(data, dict):
+        for key, actor in data.items():
+            if key in _SOURCE_KEYS and isinstance(actor, str) and actor.strip():
+                out[key] = actor.strip()
+    return out
+
+
 def _build_icp(
     *,
     description: str = "",
@@ -121,6 +143,7 @@ def _build_icp(
     geo_zone: str = "",
     sources: Optional[list[str]] = None,
     actor_id: str = "",
+    actor_overrides: str = "",
 ) -> dict[str, Any]:
     """Assemble a pipeline's config/ICP blob (stored in ``clients.filters`` jsonb).
 
@@ -154,7 +177,7 @@ def _build_icp(
         f["custom_geolocation"] = zone
     # Per-pipeline tool toggles — only known registry keys are stored. Empty =
     # the vertical's defaults (so old pipelines keep working unchanged).
-    chosen = [s for s in (sources or []) if s in _SOURCE_KEYS]
+    chosen = list(dict.fromkeys(s for s in (sources or []) if s in _SOURCE_KEYS))
     if chosen:
         f["sources"] = chosen
     if _csv(industries):
@@ -172,9 +195,17 @@ def _build_icp(
     if types:
         f["signal_types"] = types
     # Actor chosen via the AI Scraper Advisor (Apify actor id, e.g.
-    # "compass/crawler-google-places") — the preferred scraper for this pipeline.
+    # "compass/crawler-google-places") — kept for back-compat (single actor).
     if (actor_id or "").strip():
         f["actor_id"] = actor_id.strip()
+    # Per-source actor overrides from the advisor's multi-select "Use this":
+    # {source_key: actor_id}. Each selected actor also implies its source is on,
+    # so union those keys into the scraped sources.
+    overrides = _parse_overrides(actor_overrides)
+    if overrides:
+        f["actor_overrides"] = overrides
+        merged = list(dict.fromkeys((f.get("sources") or []) + list(overrides)))
+        f["sources"] = [s for s in merged if s in _SOURCE_KEYS]
     return f
 
 
@@ -259,6 +290,8 @@ async def preview_pipeline(
     signal_focus: list[str] = Form([]),
     geo_zone: str = Form(""),
     sources: list[str] = Form([]),
+    actor_id: str = Form(""),
+    actor_overrides: str = Form(""),
 ):
     """Test-fetch: show the leads an ICP would return, WITHOUT saving anything.
 
@@ -272,44 +305,43 @@ async def preview_pipeline(
     filters = _build_icp(
         description=description, industries=industries, cities=cities, keywords=keywords,
         employee_min=employee_min, employee_max=employee_max, signal_focus=signal_focus,
-        geo_zone=geo_zone, sources=sources,
+        geo_zone=geo_zone, sources=sources, actor_id=actor_id, actor_overrides=actor_overrides,
     )
     vcfg = get_vertical_config(vertical)
     effective_sources = filters.get("sources") or (vcfg.get("sources") or [])
-    if "google_maps" in effective_sources:
+    # Live test-fetch scrapes every enabled source AT ONCE (parallel), like a
+    # real run — but ONLY sources that honor a preview cap (max_results). The
+    # rest (multi-run/uncapped actors like Naukri or Twitter) would spend a
+    # full run's money on a test click, so they stay pool-backed in previews.
+    _PREVIEWABLE = {"google_maps", "linkedin_people", "indiamart", "crunchbase",
+                    "indeed", "rss_feeds", "hackernews"}
+    live_sources = [s for s in effective_sources if s in _PREVIEWABLE]
+    skipped = [s for s in effective_sources if s not in _PREVIEWABLE]
+    if skipped:
+        logger.info("Preview: skipping uncapped sources %s (pool-backed only)", skipped)
+    if live_sources and (filters.get("sources")
+                         or {"google_maps", "linkedin_people"} & set(effective_sources)):
         from pipeline import preview_run  # lazy import avoids a startup cycle
 
         search = {
             "categories": filters.get("keywords") or [],
+            "keywords": filters.get("keywords") or [],
             "cities": filters.get("cities") or [],
             "custom_geolocation": filters.get("custom_geolocation"),
-            "sources": filters.get("sources"),
-        }
-        try:
-            leads = await preview_run(vertical=vertical, search=search, max_results=8)
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Maps preview failed: %s", exc)
-            leads = []
-        pool_size = len(leads)
-    elif "linkedin_people" in effective_sources:
-        from pipeline import preview_run  # live LinkedIn people search + follower filter
-
-        search = {
-            "job_titles": filters.get("job_titles") or filters.get("keywords") or [],
-            "cities": filters.get("cities") or [],
+            "job_titles": filters.get("job_titles") or [],
             "industries": filters.get("industries") or [],
             "max_followers": filters.get("max_followers"),
             "employee_max": filters.get("employee_max"),
             "actor_id": filters.get("actor_id"),
-            "sources": filters.get("sources"),
+            "actor_overrides": filters.get("actor_overrides"),
+            "sources": live_sources,
         }
-        # Fetch a wider net — low-follower people are a minority, so the
-        # follower filter drops most; scanning ~30 leaves a usable handful.
-        search["max_results"] = 30
+        # LinkedIn People casts a wider net — the follower cap drops most profiles.
+        cap = 30 if "linkedin_people" in live_sources else 8
         try:
-            leads = await preview_run(vertical=vertical, search=search, max_results=30)
+            leads = await preview_run(vertical=vertical, search=search, max_results=cap)
         except Exception as exc:  # noqa: BLE001
-            logger.error("LinkedIn People preview failed: %s", exc)
+            logger.error("Live preview failed: %s", exc)
             leads = []
         pool_size = len(leads)
     else:
@@ -344,6 +376,7 @@ def create_pipeline(
     geo_zone: str = Form(""),
     sources: list[str] = Form([]),
     actor_id: str = Form(""),
+    actor_overrides: str = Form(""),
     assign_me: Optional[str] = Form(None),
 ):
     """Create a pipeline (a client + described ICP), optionally assigning the operator."""
@@ -356,7 +389,7 @@ def create_pipeline(
     filters = _build_icp(
         description=description, industries=industries, cities=cities, keywords=keywords,
         employee_min=employee_min, employee_max=employee_max, signal_focus=signal_focus,
-        geo_zone=geo_zone, sources=sources, actor_id=actor_id,
+        geo_zone=geo_zone, sources=sources, actor_id=actor_id, actor_overrides=actor_overrides,
     )
     payload = {
         "name": name.strip(),
@@ -372,11 +405,26 @@ def create_pipeline(
     if not row:
         return _render_list(request, user, tenant, error="Failed to create the pipeline.", status_code=500)
 
-    notice = f"Pipeline “{name.strip()}” created."
+    # Creating the pipeline also STARTS it: fire the first scrape in the
+    # background — every enabled source/actor runs at once (parallel) and the
+    # leads land in the shared pool when the run finishes.
+    def _kickoff(v: str = vertical, f: Optional[dict[str, Any]] = filters or None) -> None:
+        import asyncio as aio
+
+        from pipeline import run_pipeline
+
+        try:
+            aio.run(run_pipeline(vertical=v, search=f))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("First scrape for new pipeline failed: %s", exc)
+
+    threading.Thread(target=_kickoff, name="pipeline-kickoff", daemon=True).start()
+
+    notice = f"Pipeline “{name.strip()}” created — first scrape is running now."
     if assign_me and user.get("email"):
         ok, err = assign_user_to_client(user["email"], str(row["id"]))
         notice += " You're now assigned to it." if ok else f" (couldn't assign you: {err})"
-    logger.info("Created pipeline %s (%s)", name, row.get("id"))
+    logger.info("Created pipeline %s (%s); kickoff scrape started", name, row.get("id"))
     return _render_list(request, user, tenant, notice=notice)
 
 

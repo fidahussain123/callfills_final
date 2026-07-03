@@ -27,6 +27,47 @@ logger = logging.getLogger("lead-intel.scrapers.linkedin_people")
 _HEADCOUNT = [("A", 0), ("B", 10), ("C", 50), ("D", 200), ("E", 500),
               ("F", 1000), ("G", 5000), ("H", 10000), ("I", 10**9)]
 
+# LinkedIn v2 industry codes (harvestapi ``industryIds``). A pipeline's free-text
+# Industries field is matched — by substring — against these keywords so the
+# search is HARD-filtered to the right sector (else "manufacturing" leads would
+# be silently ignored). Broad category codes keep the net wide; a few sub-codes
+# are added where the parent alone misses common cases (freight, warehousing).
+# Full list: github.com/HarvestAPI/linkedin-industry-codes-v2
+_INDUSTRY_CODES: dict[str, list[str]] = {
+    "manufacturing": ["25"],
+    "pharma": ["15"], "pharmaceutical": ["15"], "pharmaceuticals": ["15"],
+    "logistics": ["116", "87", "93"], "supply chain": ["116", "87", "93"],
+    "transportation": ["116", "92"], "transport": ["116", "92"],
+    "freight": ["87"], "warehousing": ["93"], "shipping": ["116", "95"],
+    "software": ["4"], "saas": ["4"], "it services": ["4"], "tech": ["4"],
+    "fintech": ["43", "4"], "financial": ["43"], "finance": ["43"],
+    "banking": ["41"], "insurance": ["42"], "accounting": ["47"],
+    "healthcare": ["14"], "health care": ["14"], "medical": ["14"],
+    "construction": ["48"], "real estate": ["44"], "retail": ["27"],
+    "wholesale": ["133"], "ecommerce": ["27"], "e-commerce": ["27"],
+    "marketing": ["1862"], "advertising": ["1862"], "design": ["99"],
+    "consulting": ["1810"], "professional services": ["1810"],
+    "telecom": ["8"], "telecommunications": ["8"],
+    "utilities": ["59"], "energy": ["59"],
+    "chemical": ["54"], "chemicals": ["54"],
+    "food": ["23"], "beverage": ["23"],
+}
+
+
+def industry_ids(names: list[str]) -> list[str]:
+    """Resolve free-text industry names → unique LinkedIn industryIds (ordered)."""
+    codes: list[str] = []
+    for raw in names:
+        req = str(raw).strip().lower()
+        if not req:
+            continue
+        for key, ids in _INDUSTRY_CODES.items():
+            if key in req or req in key:
+                for cid in ids:
+                    if cid not in codes:
+                        codes.append(cid)
+    return codes
+
 
 @register_scraper
 class LinkedInPeopleScraper(ApifyScraper):
@@ -48,7 +89,12 @@ class LinkedInPeopleScraper(ApifyScraper):
 
     def configure(self, cfg: dict[str, Any]) -> None:
         """Inject filters from the pipeline ICP + AI-parsed description."""
-        titles = cfg.get("job_titles") or cfg.get("keywords")
+        titles = cfg.get("job_titles")
+        if not titles and "google_maps" not in (cfg.get("sources") or []):
+            # Keywords double as job titles ONLY when Maps isn't also enabled —
+            # in a combined pipeline the keywords are the Maps search category
+            # ("dental clinic"), not people titles; default titles apply instead.
+            titles = cfg.get("keywords")
         if titles:
             self._titles = [str(t).strip() for t in titles if str(t).strip()]
         locs = cfg.get("locations") or cfg.get("cities")
@@ -83,6 +129,10 @@ class LinkedInPeopleScraper(ApifyScraper):
         }
         if self._locations:
             run_input["locations"] = self._locations
+        if self._industries:
+            ind = industry_ids(self._industries)
+            if ind:
+                run_input["industryIds"] = ind
         if self._company_max:
             codes = [code for code, hi in _HEADCOUNT if hi and self._company_max >= 0 and lo_ok(code, self._company_max)]
             if codes:

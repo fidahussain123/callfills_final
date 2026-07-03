@@ -31,11 +31,17 @@ def data_path(filename: str) -> str:
 
 
 def write_json(filename: str, payload: Any) -> str:
-    """Write ``payload`` as pretty JSON to ``data/<filename>`` and return the path."""
+    """Atomically write ``payload`` as pretty JSON to ``data/<filename>``.
+
+    Writes to a temp file then ``os.replace``s it, so a dashboard read (or a
+    concurrent run) can never observe a truncated half-written file.
+    """
     path = filename if os.path.isabs(filename) else data_path(filename)
     _ensure_dir(path)
-    with open(path, "w", encoding="utf-8") as handle:
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2, ensure_ascii=False, default=str)
+    os.replace(tmp, path)
     logger.info("Wrote %s", path)
     return path
 
@@ -59,11 +65,13 @@ def _has_existing_leads() -> bool:
 def _merge_leads_by_vertical(
     leads: list[dict[str, Any]], stats: dict[str, Any] | None
 ) -> list[dict[str, Any]]:
-    """Refresh only the current run's vertical in the shared pool.
+    """Merge the current run's leads into the shared pool by company.
 
-    The dashboard reads a single ``leads.json`` pool shared across verticals. A
-    run for vertical *V* should replace *V*'s leads without wiping leads from
-    other verticals (e.g. a ``local_business`` run must not erase recruitment).
+    The dashboard reads a single ``leads.json`` pool shared across verticals.
+    Runs are per-PIPELINE slices, so a run must never replace its vertical's
+    whole slice (a new "dentists" pipeline would wipe the "barbers" leads).
+    Merge instead: new leads win on (company_name, vertical) conflicts; every
+    other existing lead is kept.
     """
     vertical = (stats or {}).get("vertical")
     if not vertical:
@@ -74,15 +82,21 @@ def _merge_leads_by_vertical(
         return leads
     if not isinstance(existing, list):
         return leads
-    others = [
+    fresh = {
+        ((lead.get("company_name") or "").strip().lower(), lead.get("vertical"))
+        for lead in leads
+        if isinstance(lead, dict)
+    }
+    kept = [
         lead for lead in existing
-        if isinstance(lead, dict) and lead.get("vertical") != vertical
+        if isinstance(lead, dict)
+        and ((lead.get("company_name") or "").strip().lower(), lead.get("vertical")) not in fresh
     ]
     logger.info(
-        "Merged pool: kept %d other-vertical leads + %d new '%s' leads",
-        len(others), len(leads), vertical,
+        "Merged pool: kept %d existing leads + %d new/refreshed '%s' leads",
+        len(kept), len(leads), vertical,
     )
-    return others + leads
+    return kept + leads
 
 
 def save_run(

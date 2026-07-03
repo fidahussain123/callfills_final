@@ -84,16 +84,20 @@
     {# Draw-a-zone map for Google Maps pipelines (hidden for intent verticals) #}
     {% include "partials/zone_picker.html" %}
 
-    {# AI Scraper Advisor — recommends the best Apify actor + real cost for a source #}
+    {# Scraper tools — pick a tool, the AI suggests its best Apify actors + real
+       costs; "Use this" adds the actor. Multiple tools/actors per pipeline; one
+       scrape runs them ALL at once. #}
     <div class="rounded-lg border border-edge bg-canvas p-3.5">
-      <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-2">AI Scraper Advisor <span class="text-muted/60 normal-case font-normal">· which actor to use &amp; what it costs</span></p>
-      <div class="flex flex-wrap gap-1.5 mb-2">
-        {% for s in ['google maps','linkedin','instagram','indiamart','twitter','jobs','crunchbase'] %}
-        <button type="button" onclick="cfAskActor('{{ s }}')" class="rounded-full border border-edge bg-panel hover:bg-surface text-muted hover:text-ink text-[11px] px-2.5 py-1 transition capitalize">{{ s }}</button>
+      <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-2">Scraper tools <span class="text-muted/60 normal-case font-normal">· pick a tool → choose its actor · add as many as you need</span></p>
+      <select id="toolSelect" onchange="cfToolChosen(this.value)"
+              class="w-full rounded-lg bg-canvas border border-edge px-3 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand">
+        <option value="" selected>Add a tool — its best actors will be suggested…</option>
+        {% for key, label, note in source_catalog if key != 'google_maps' %}
+        <option value="{{ key }}">{{ label }} — {{ note }}</option>
         {% endfor %}
-      </div>
-      <div class="flex items-center gap-2">
-        <input id="advisorQ" name="q" autocomplete="off" placeholder="or type a source… e.g. google maps"
+      </select>
+      <div class="mt-2 flex items-center gap-2">
+        <input id="advisorQ" name="q" autocomplete="off" placeholder="or describe a source… e.g. instagram business pages"
                class="flex-1 rounded-lg bg-canvas border border-edge px-3.5 py-2 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
         <button type="button" id="advisorBtn"
                 hx-post="/pipelines/advisor" hx-include="#advisorQ" hx-target="#advisorResult" hx-swap="innerHTML" hx-indicator="#advisorSpin"
@@ -101,8 +105,10 @@
       </div>
       <div id="advisorSpin" class="htmx-indicator text-[11px] text-muted mt-1.5">Searching Apify + ranking actors…</div>
       <div id="advisorResult" class="mt-2"></div>
-      <div id="actorSelected" class="hidden mt-2 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 ring-1 ring-emerald-200 dark:ring-emerald-500/25 text-emerald-800 dark:text-emerald-200 text-xs px-3 py-2"></div>
+      <div id="actorSelected" class="hidden mt-2 flex flex-wrap gap-1.5"></div>
       <input type="hidden" name="actor_id" id="actorId" />
+      <input type="hidden" name="actor_overrides" id="actorOverrides" />
+      <div id="sourcesHidden"></div>
     </div>
 
     {# Per-pipeline tool toggles — whatever's on is exactly what this pipeline fetches #}
@@ -124,6 +130,8 @@
     <span class="{{ tile }} text-[13px] font-extrabold lowercase" style="background:#275DF5">n</span>
     {%- elif key == 'linkedin_jobs' -%}
     <span class="{{ tile }} text-[11px] font-extrabold lowercase" style="background:#0A66C2">in</span>
+    {%- elif key == 'linkedin_people' -%}
+    <span class="{{ tile }}" style="background:#0A66C2"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 10.2a2.9 2.9 0 1 0 0-5.8 2.9 2.9 0 0 0 0 5.8Zm0 1.4c-2.6 0-5.2 1.3-5.2 3.4v1.2h10.4v-1.2c0-2.1-2.6-3.4-5.2-3.4Z"/></svg></span>
     {%- elif key == 'reddit' -%}
     <span class="{{ tile }}" style="background:#FF4500"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M12.6 4.2l.8 2.2a6.9 6.9 0 0 1 3 .9l.1.1c.6-.5 1.5-.5 2 .1.6.6.5 1.6-.1 2.1l-.6.4c0 .2.1.4.1.6 0 2.7-3 4.8-6.4 4.8S4.1 13.3 4.1 10.6c0-.2 0-.4.1-.6l-.6-.4c-.7-.5-.7-1.5-.2-2.1.6-.6 1.5-.6 2.1-.1h.1a6.9 6.9 0 0 1 3-.9l.9-2.6 2.6.7.5-.4ZM8 9.7a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm5.1 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm-5 3.6c.7.6 1.7 1 2.9 1s2.2-.4 2.9-1l-.7-.7c-.5.4-1.3.7-2.2.7-.9 0-1.7-.3-2.2-.7l-.7.7Z" transform="translate(-0.5 0.6) scale(0.95)"/></svg></span>
     {%- elif key == 'twitter' -%}
@@ -137,19 +145,17 @@
 
     <div>
       <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">
-        Tools <span class="text-muted/60 normal-case font-normal">(this pipeline fetches only what's enabled — vertical picks smart defaults)</span>
+        Built-in tool <span class="text-muted/60 normal-case font-normal">(Google Maps has its own live map — every other tool is an Apify actor added above)</span>
       </label>
       <div id="source-toggles" class="grid sm:grid-cols-2 gap-2">
-        {% for key, label, note in source_catalog %}
         <label class="flex items-center gap-2.5 rounded-lg border border-edge bg-canvas px-3 py-2.5 cursor-pointer select-none transition hover:border-brand/40 has-[:checked]:border-brand/50 has-[:checked]:bg-brand/[0.04]">
-          <input type="checkbox" name="sources" value="{{ key }}" class="h-4 w-4 rounded border-edge accent-brand shrink-0" />
-          {{ tool_icon(key) }}
+          <input type="checkbox" name="sources" value="google_maps" class="h-4 w-4 rounded border-edge accent-brand shrink-0" />
+          {{ tool_icon('google_maps') }}
           <span class="min-w-0">
-            <span class="block text-sm font-semibold text-ink leading-tight">{{ label }}</span>
-            <span class="block text-[11px] text-muted leading-snug mt-0.5">{{ note }}</span>
+            <span class="block text-sm font-semibold text-ink leading-tight">Google Maps</span>
+            <span class="block text-[11px] text-muted leading-snug mt-0.5">local businesses · map + draw-a-zone</span>
           </span>
         </label>
-        {% endfor %}
       </div>
     </div>
 
@@ -177,7 +183,7 @@
     </label>
     <button type="submit" {% if not supabase_ready %}disabled{% endif %}
             class="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-brand-gradient hover:opacity-95 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-2.5 shadow-brand transition">
-      Create pipeline
+      Create pipeline &amp; start scraping
     </button>
   </form>
 
@@ -266,23 +272,95 @@
 </div>
 
 <script>
-  /* Tool toggles: selecting a vertical pre-checks its default sources; the
-     operator can then enable/disable any tool freely before previewing. */
+  /* ——— Scraper tools: multi-actor selection ————————————————————————
+     cfSources = the non-Maps sources this pipeline scrapes (posted as hidden
+     name="sources" inputs). cfActors = {source: chosen Apify actor} — posted
+     as the #actorOverrides JSON so every source runs the EXACT actor picked.
+     Google Maps stays a real checkbox (it drives the draw-a-zone map).
+     A scrape run fetches all enabled sources AT ONCE (parallel). */
+  var TOOL_LABEL = { {% for key, label, note in source_catalog %}{{ key|tojson }}: {{ label|tojson }}{% if not loop.last %}, {% endif %}{% endfor %} };
+  /* Advisor query per tool (empty = no actor needed → added directly, e.g. free RSS). */
+  var ADVQ = { wellfound: "wellfound startup companies", rss_feeds: "", crunchbase: "crunchbase companies",
+    indiamart: "indiamart suppliers", indeed: "indeed jobs", naukri: "naukri jobs",
+    linkedin_jobs: "linkedin jobs", linkedin_people: "linkedin profile scraper",
+    twitter: "twitter scraper", facebook_ads: "facebook ads" };
+  var cfSources = [], cfActors = {}, cfPendingTool = "";
+  function cfEsc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function cfMapsBox() { return document.querySelector('input[name="sources"][value="google_maps"]'); }
+  function cfRender() {
+    var hid = document.getElementById("sourcesHidden");
+    if (hid) hid.innerHTML = cfSources.map(function (k) { return '<input type="hidden" name="sources" value="' + cfEsc(k) + '">'; }).join("");
+    var keys = Object.keys(cfActors);
+    var map = {}; keys.forEach(function (k) { map[k] = cfActors[k].id; });
+    var ov = document.getElementById("actorOverrides"); if (ov) ov.value = keys.length ? JSON.stringify(map) : "";
+    var lg = document.getElementById("actorId"); if (lg) lg.value = keys.length ? cfActors[keys[keys.length - 1]].id : "";
+    var wrap = document.getElementById("actorSelected"); if (!wrap) return;
+    var chips = (cfActors.google_maps ? ["google_maps"] : []).concat(cfSources);
+    if (!chips.length) { wrap.classList.add("hidden"); wrap.innerHTML = ""; return; }
+    wrap.classList.remove("hidden");
+    wrap.innerHTML = chips.map(function (k) {
+      var a = cfActors[k];
+      var what = a ? a.title + (a.price ? " · " + a.price : "") : (k === "rss_feeds" ? "free RSS feeds" : "default scraper");
+      return '<span class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 ring-1 ring-emerald-200 dark:ring-emerald-500/25 text-emerald-800 dark:text-emerald-200 text-xs px-2.5 py-1">'
+        + '✓ <b>' + cfEsc(TOOL_LABEL[k] || k.replace(/_/g, " ")) + '</b>'
+        + '<span class="opacity-70">' + cfEsc(what) + '</span>'
+        + '<button type="button" onclick="cfRemoveSource(\'' + cfEsc(k) + '\')" aria-label="Remove" class="ml-0.5 font-bold leading-none opacity-70 hover:opacity-100">×</button>'
+        + '</span>';
+    }).join("");
+  }
+  function cfAddSource(key) { if (key && key !== "google_maps" && cfSources.indexOf(key) === -1) cfSources.push(key); cfRender(); }
+  function cfRemoveSource(key) {
+    delete cfActors[key];
+    cfSources = cfSources.filter(function (x) { return x !== key; });
+    if (key === "google_maps") { var b = cfMapsBox(); if (b) b.checked = false; if (window.cfSyncMap) cfSyncMap(); }
+    cfRender();
+  }
+  /* Dropdown pick → remember the tool + auto-suggest its actors via Ask AI.
+     Tools that need no actor (free RSS) are added straight away. */
+  function cfToolChosen(key) {
+    var t = document.getElementById("toolSelect"); if (t) t.value = "";
+    if (!key) return;
+    cfPendingTool = key;
+    if (ADVQ[key]) cfAskActor(ADVQ[key]); else cfAddSource(key);
+  }
+  /* City search + map/radius picker lives in partials/zone_picker.html. */
+
+  /* Fill the advisor query + fire "Ask AI" (used by the tool dropdown). */
+  function cfAskActor(s) {
+    var i = document.getElementById("advisorQ");
+    if (i) { i.value = s; if (window.htmx) htmx.trigger(document.getElementById("advisorBtn"), "click"); }
+  }
+  /* "Use this" on an advisor result → add that actor FOR ITS TOOL (falls back to
+     the tool picked in the dropdown). Picking across tools accumulates. */
+  function cfPickActor(id, title, price, sourceKey) {
+    var key = sourceKey || cfPendingTool;
+    if (!key) {
+      var w = document.getElementById("actorSelected");
+      if (w) {
+        w.classList.remove("hidden");
+        w.innerHTML = '<span class="text-xs text-amber-600 dark:text-amber-300">Couldn’t match that actor to a tool — pick the tool in the dropdown first, then “Use this”.</span>';
+        setTimeout(cfRender, 4000);   // restore the chips after the hint
+      }
+      return;
+    }
+    cfActors[key] = { id: id, title: title, price: price || "" };
+    if (key === "google_maps") { var b = cfMapsBox(); if (b) b.checked = true; }
+    else cfAddSource(key);
+    if (window.cfSyncMap) cfSyncMap();
+    cfPendingTool = "";   // consumed — a later free-text pick must not rebind to this tool
+    cfRender();
+  }
+
+  /* Vertical sync + draw-a-zone map visibility (Google Maps only). */
   (function () {
     var V_SOURCES = {{ vertical_sources | tojson }};
     var form = document.querySelector('form[action="/pipelines/create"]');
     if (!form) return;
     var sel = form.querySelector('select[name="vertical"]');
     var zone = document.getElementById("zone-picker");   // the map + radius block
-    // Friendly advisor query per source (empty = don't suggest actors, e.g. free RSS).
-    var ADVQ = { google_maps: "", wellfound: "wellfound", rss_feeds: "", crunchbase: "crunchbase",
-      indiamart: "indiamart", indeed: "indeed jobs", naukri: "naukri", linkedin_jobs: "linkedin jobs",
-      reddit: "reddit", twitter: "twitter", facebook_ads: "facebook ads" };
-    function boxes() { return form.querySelectorAll('input[name="sources"]'); }
-    function mapsOn() { var on = false; boxes().forEach(function (cb) { if (cb.value === "google_maps" && cb.checked) on = true; }); return on; }
     function updateMap() {
       if (!zone) return;
-      var on = mapsOn();
+      var b = cfMapsBox(); var on = !!(b && b.checked);
       zone.classList.toggle("hidden", !on);   // map/radius appears ONLY for Google Maps
       if (!on) {
         var t = document.getElementById("mapToggle"); if (t) t.checked = false;
@@ -292,32 +370,26 @@
     }
     function sync() {
       var defs = (sel && V_SOURCES[sel.value]) || [];
-      boxes().forEach(function (cb) { cb.checked = defs.indexOf(cb.value) !== -1; });
+      var b = cfMapsBox(); if (b) b.checked = defs.indexOf("google_maps") !== -1;
+      cfSources = []; cfActors = {}; cfPendingTool = "";   // vertical change resets tool picks
+      cfRender();
       updateMap();
     }
-    // User toggling a tool: refresh the map, and for a non-Maps source auto-ask
-    // the AI advisor which actor to use + what it costs.
-    boxes().forEach(function (cb) {
-      cb.addEventListener("change", function () {
-        updateMap();
-        if (cb.checked && cb.value !== "google_maps" && ADVQ[cb.value]) cfAskActor(ADVQ[cb.value]);
-      });
-    });
+    var mb = cfMapsBox();
+    if (mb) mb.addEventListener("change", function () { if (!mb.checked) delete cfActors.google_maps; cfRender(); updateMap(); });
     if (sel) sel.addEventListener("change", sync);
+    var q = document.getElementById("advisorQ");
+    if (q) {
+      // Typing a manual query voids the dropdown's pending tool (results will
+      // carry their own source_key or none), and Enter must Ask AI — never
+      // submit the form (submit = create + PAID scrape).
+      q.addEventListener("input", function () { cfPendingTool = ""; });
+      q.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") { e.preventDefault(); if (window.htmx) htmx.trigger(document.getElementById("advisorBtn"), "click"); }
+      });
+    }
+    window.cfSyncMap = updateMap;
     sync();
   })();
-  /* City search + map/radius picker lives in partials/zone_picker.html. */
-
-  /* AI Scraper Advisor: chip → fill the query + fire "Ask AI". */
-  function cfAskActor(s) {
-    var i = document.getElementById("advisorQ");
-    if (i) { i.value = s; if (window.htmx) htmx.trigger(document.getElementById("advisorBtn"), "click"); }
-  }
-  /* Store the chosen actor on the form + show a confirmation. */
-  function cfPickActor(id, title, price) {
-    var f = document.getElementById("actorId"); if (f) f.value = id;
-    var el = document.getElementById("actorSelected");
-    if (el) { el.innerHTML = "✓ Scraper set: <b>" + title + "</b> · " + price + " <span class=\"opacity-70 font-mono\">(" + id + ")</span>"; el.classList.remove("hidden"); }
-  }
 </script>
 {% endblock %}
