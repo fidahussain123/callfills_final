@@ -29,7 +29,7 @@
         <p class="text-[10px] text-muted/70 mt-0.5 font-mono truncate">{{ a.id }}</p>
       </div>
       <button type="button"
-              onclick='cfPickActor({{ a.id|tojson }}, {{ a.title|tojson }}, {{ (("$" ~ a.cost_per_1k ~ "/1k") if a.cost_per_1k is not none else a.price_display)|tojson }}, {{ (a.source_key or "")|tojson }})'
+              onclick='cfPickActor(this, {{ a.id|tojson }}, {{ a.title|tojson }}, {{ (("$" ~ a.cost_per_1k ~ "/1k") if a.cost_per_1k is not none else a.price_display)|tojson }}, {{ (a.source_key or "")|tojson }})'
               class="shrink-0 rounded-lg {{ 'bg-brand text-white hover:bg-brandmed' if a.recommended else 'border border-edge bg-panel hover:bg-surface text-ink' }} text-xs font-semibold px-3 py-1.5 transition">Use this</button>
     </div>
   </li>

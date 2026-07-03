@@ -96,6 +96,15 @@
         <option value="{{ key }}">{{ label }} — {{ note }}</option>
         {% endfor %}
       </select>
+
+      {# Saved actors — every one here scrapes when you create the pipeline #}
+      <div id="actorPanel" class="hidden mt-2 rounded-lg border border-emerald-300/70 dark:border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-500/10 p-2.5 transition">
+        <p class="text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700 dark:text-emerald-300 mb-1.5">
+          Selected actors <span class="normal-case font-normal opacity-70">· all run together when you create &amp; scrape</span>
+        </p>
+        <div id="actorSelected" class="flex flex-wrap gap-1.5"></div>
+      </div>
+
       <div class="mt-2 flex items-center gap-2">
         <input id="advisorQ" name="q" autocomplete="off" placeholder="or describe a source… e.g. instagram business pages"
                class="flex-1 rounded-lg bg-canvas border border-edge px-3.5 py-2 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
@@ -105,7 +114,6 @@
       </div>
       <div id="advisorSpin" class="htmx-indicator text-[11px] text-muted mt-1.5">Searching Apify + ranking actors…</div>
       <div id="advisorResult" class="mt-2"></div>
-      <div id="actorSelected" class="hidden mt-2 flex flex-wrap gap-1.5"></div>
       <input type="hidden" name="actor_id" id="actorId" />
       <input type="hidden" name="actor_overrides" id="actorOverrides" />
       <div id="sourcesHidden"></div>
@@ -294,10 +302,11 @@
     var map = {}; keys.forEach(function (k) { map[k] = cfActors[k].id; });
     var ov = document.getElementById("actorOverrides"); if (ov) ov.value = keys.length ? JSON.stringify(map) : "";
     var lg = document.getElementById("actorId"); if (lg) lg.value = keys.length ? cfActors[keys[keys.length - 1]].id : "";
+    var panel = document.getElementById("actorPanel");
     var wrap = document.getElementById("actorSelected"); if (!wrap) return;
     var chips = (cfActors.google_maps ? ["google_maps"] : []).concat(cfSources);
-    if (!chips.length) { wrap.classList.add("hidden"); wrap.innerHTML = ""; return; }
-    wrap.classList.remove("hidden");
+    if (!chips.length) { if (panel) panel.classList.add("hidden"); wrap.innerHTML = ""; return; }
+    if (panel) panel.classList.remove("hidden");
     wrap.innerHTML = chips.map(function (k) {
       var a = cfActors[k];
       var what = a ? a.title + (a.price ? " · " + a.price : "") : (k === "rss_feeds" ? "free RSS feeds" : "default scraper");
@@ -330,14 +339,16 @@
     var i = document.getElementById("advisorQ");
     if (i) { i.value = s; if (window.htmx) htmx.trigger(document.getElementById("advisorBtn"), "click"); }
   }
-  /* "Use this" on an advisor result → add that actor FOR ITS TOOL (falls back to
-     the tool picked in the dropdown). Picking across tools accumulates. */
-  function cfPickActor(id, title, price, sourceKey) {
+  /* "Use this" on an advisor result → SAVE that actor for its tool (falls back
+     to the tool picked in the dropdown). Picks across tools accumulate; every
+     saved actor scrapes when the pipeline is created. */
+  function cfPickActor(btn, id, title, price, sourceKey) {
     var key = sourceKey || cfPendingTool;
+    var panel = document.getElementById("actorPanel");
     if (!key) {
       var w = document.getElementById("actorSelected");
+      if (panel) panel.classList.remove("hidden");
       if (w) {
-        w.classList.remove("hidden");
         w.innerHTML = '<span class="text-xs text-amber-600 dark:text-amber-300">Couldn’t match that actor to a tool — pick the tool in the dropdown first, then “Use this”.</span>';
         setTimeout(cfRender, 4000);   // restore the chips after the hint
       }
@@ -349,6 +360,13 @@
     if (window.cfSyncMap) cfSyncMap();
     cfPendingTool = "";   // consumed — a later free-text pick must not rebind to this tool
     cfRender();
+    // Instant feedback: mark the clicked button, reveal + flash the saved panel.
+    if (btn) { btn.textContent = "✓ Added"; btn.disabled = true; btn.classList.add("opacity-60", "cursor-default"); }
+    if (panel) {
+      panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      panel.classList.add("ring-2", "ring-emerald-400");
+      setTimeout(function () { panel.classList.remove("ring-2", "ring-emerald-400"); }, 900);
+    }
   }
 
   /* Vertical sync + draw-a-zone map visibility (Google Maps only). */

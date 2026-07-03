@@ -79,12 +79,14 @@ def search_store(query: str, limit: int = 6) -> list[dict[str, Any]]:
         stats = a.get("stats") or {}
         display, per_result = _price_summary(a)
         cost_1k = round(per_result * 1000, 2) if per_result is not None else None
+        raw_rating = a.get("actorReviewRating")
+        rating = round(float(raw_rating), 1) if isinstance(raw_rating, (int, float)) else None
         out.append({
             "id": f"{a.get('username')}/{a.get('name')}",
             "title": (a.get("title") or a.get("name") or "").strip(),
             "desc": (a.get("description") or "").strip()[:160],
             "users": stats.get("totalUsers") or 0,
-            "rating": a.get("actorReviewRating"),
+            "rating": rating,
             "reviews": a.get("actorReviewCount") or 0,
             "price_display": display,
             "per_result": per_result,
