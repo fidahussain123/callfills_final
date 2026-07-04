@@ -6,6 +6,7 @@
 {% block header_actions %}
 <form hx-post="/dashboard/run" hx-target="#run-panel" hx-swap="innerHTML">
   <input type="hidden" name="vertical" value="{{ client.vertical }}" />
+  <input type="hidden" name="client_id" value="{{ client.id }}" />
   <button type="submit"
           class="inline-flex items-center gap-1.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white text-sm font-semibold px-4 py-2 shadow-brand transition active:scale-[0.98]">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 4.2a1 1 0 0 0-1.5.86v9.88a1 1 0 0 0 1.5.86l8.5-4.94a1 1 0 0 0 0-1.72L6.3 4.2Z"/></svg>

@@ -290,7 +290,7 @@
   /* Advisor query per tool (empty = no actor needed → added directly, e.g. free RSS). */
   var ADVQ = { wellfound: "wellfound startup companies", rss_feeds: "", crunchbase: "crunchbase companies",
     indiamart: "indiamart suppliers", indeed: "indeed jobs", naukri: "naukri jobs",
-    linkedin_jobs: "linkedin jobs", linkedin_people: "linkedin profile scraper",
+    linkedin_jobs: "linkedin jobs", linkedin_people: "linkedin profile search email finder",
     twitter: "twitter scraper", facebook_ads: "facebook ads" };
   var cfSources = [], cfActors = {}, cfPendingTool = "";
   function cfEsc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }

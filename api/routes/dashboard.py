@@ -192,13 +192,16 @@ _inflight: set[str] = set()
 async def run_now(
     request: Request,
     vertical: str = Form("recruitment"),
+    client_id: str = Form(""),
     user: dict = Depends(require_user),
 ) -> HTMLResponse:
     """Trigger a pipeline run and return a status toast.
 
-    Operators choose the vertical; client members run their own pipeline's
-    vertical (locked to it). A single-flight guard prevents duplicate concurrent
-    scrapes of the same vertical.
+    When ``client_id`` is given (the per-pipeline "Run scrape" button), the run
+    uses THAT pipeline's saved sources/actors + ICP — not the bare vertical
+    default, which would scrape the wrong source (e.g. Google Maps for a
+    LinkedIn People pipeline). Client members run their own assigned pipeline.
+    A single-flight guard prevents duplicate concurrent scrapes.
     """
     tenant = resolve_tenant(user)
     search: Optional[dict[str, Any]] = None
@@ -212,8 +215,29 @@ async def run_now(
             )
         vertical = client.get("vertical") or vertical  # lock clients to their vertical
         search = client.get("filters") or None  # targeted search (e.g. Maps category/city)
+        client_id = str(client.get("id") or "") or client_id
+    elif client_id:
+        # Operator ran a SPECIFIC pipeline from its detail page → scrape exactly
+        # its saved sources/actors + ICP (sources, actor_overrides, keywords,
+        # cities…), not the vertical's default source.
+        try:
+            from db import supabase_client as db
 
-    if vertical in _inflight:
+            row = db.get_client_by_id(client_id)
+        except Exception as exc:  # noqa: BLE001
+            row, _ = None, logger.error("Run: could not load pipeline %s: %s", client_id, exc)
+        if row:
+            vertical = row.get("vertical") or vertical
+            search = row.get("filters") or None
+        if not (search or {}).get("sources"):
+            return templates.TemplateResponse(
+                request,
+                "partials/toast.html",
+                {"message": "This pipeline has no tool selected — edit it and add a tool (Google Maps or an actor)."},
+            )
+
+    run_key = client_id or vertical
+    if run_key in _inflight:
         return templates.TemplateResponse(
             request,
             "partials/toast.html",
@@ -235,13 +259,13 @@ async def run_now(
             logger.error("Pipeline run failed: %s", exc)
             RUN_STATUS.update({"running": False, "stage": "error"})
         finally:
-            _inflight.discard(vertical)
+            _inflight.discard(run_key)
             if RUN_STATUS.get("running"):
                 RUN_STATUS.update({"running": False, "stage": "error"})
 
-    _inflight.add(vertical)
+    _inflight.add(run_key)
     asyncio.create_task(_job())
-    logger.info("Pipeline run triggered for %s by %s", vertical, user.get("email"))
+    logger.info("Pipeline run triggered (vertical=%s, pipeline=%s) by %s", vertical, client_id or "-", user.get("email"))
     return templates.TemplateResponse(request, "partials/run_panel.html", {"run": RUN_STATUS})
 
 

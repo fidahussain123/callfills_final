@@ -76,6 +76,11 @@ class LinkedInPeopleScraper(ApifyScraper):
     key = "linkedin_people"
     source_platform = "linkedin_profile"
     actor_id = "harvestapi/linkedin-profile-search"
+    # Only a profile-SEARCH actor accepts our filtered-search input (job titles,
+    # locations, industries…). A profile-DETAIL scraper (e.g. the popular
+    # "linkedin-profile-scraper") needs profile URLs and rejects this input, so
+    # if "Use this" picked one we fall back to this search actor — see build_input.
+    _SEARCH_ACTOR = "harvestapi/linkedin-profile-search"
 
     def __init__(self) -> None:
         super().__init__()
@@ -122,6 +127,15 @@ class LinkedInPeopleScraper(ApifyScraper):
             self.actor_id = cfg["actor_id"].strip()
 
     def build_input(self, lookback_days: int) -> dict[str, Any]:
+        # Guard against an incompatible "Use this" actor: this source does a
+        # filtered SEARCH, so only a profile-search actor works. Anything else
+        # (a profile-detail scraper) would reject this input and return 0.
+        if "profile-search" not in (self.actor_id or ""):
+            logger.warning(
+                "LinkedIn People: %r is a profile-detail scraper, not a search actor — "
+                "using %s so the filtered search works", self.actor_id, self._SEARCH_ACTOR,
+            )
+            self.actor_id = self._SEARCH_ACTOR
         run_input: dict[str, Any] = {
             "profileScraperMode": "Full + email search" if self._email else "Full",
             "currentJobTitles": self._titles,
