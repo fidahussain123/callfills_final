@@ -30,18 +30,36 @@ class WellfoundScraper(ApifyScraper):
     source_platform = "wellfound"
     actor_id = "crawlerbros/wellfound-scraper"
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._keyword: str = _KEYWORD
+        self._max: int = _MAX_ITEMS
+
+    def configure(self, cfg: dict[str, Any]) -> None:
+        """Honor the pipeline's ICP: keywords/job_titles drive the role search."""
+        kw = cfg.get("keywords") or cfg.get("job_titles") or cfg.get("categories")
+        if kw:
+            first = next((str(k).strip() for k in kw if str(k).strip()), "")
+            if first:
+                self._keyword = first
+        if cfg.get("max_results"):
+            try:
+                self._max = max(1, int(cfg["max_results"]))
+            except (TypeError, ValueError):
+                pass
+
     def build_input(self, lookback_days: int) -> dict[str, Any]:
-        """Build input: engineering roles in the target location, newest first."""
+        """Build input: the pipeline's role keyword, newest first."""
         # startUrls are plain strings per the actor schema; the `location` field
         # is a client-side substring filter that "India" never matches (jobs list
         # cities or "Remote"), so we omit it rather than zero out all results.
         return {
             "startUrls": ["https://wellfound.com/jobs"],
-            "keyword": _KEYWORD,
+            "keyword": self._keyword,
             "jobType": "full-time",
             "sort": "newest",
             "includeNoSalary": True,
-            "maxItems": min(_MAX_ITEMS, settings.MAX_ITEMS_PER_SOURCE),
+            "maxItems": min(self._max, settings.MAX_ITEMS_PER_SOURCE),
         }
 
     def normalize(self, raw: RawSignal) -> Optional[NormalizedSignal]:

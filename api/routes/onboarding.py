@@ -308,19 +308,20 @@ async def preview_pipeline(
         geo_zone=geo_zone, sources=sources, actor_id=actor_id, actor_overrides=actor_overrides,
     )
     vcfg = get_vertical_config(vertical)
-    effective_sources = filters.get("sources") or (vcfg.get("sources") or [])
+    # Only sources the operator EXPLICITLY enabled ever live-scrape — never a
+    # vertical default, so an empty selection can't surprise-scrape IndiaMART.
+    explicit_sources = filters.get("sources") or []
     # Live test-fetch scrapes every enabled source AT ONCE (parallel), like a
-    # real run — but ONLY sources that honor a preview cap (max_results). The
-    # rest (multi-run/uncapped actors like Naukri or Twitter) would spend a
-    # full run's money on a test click, so they stay pool-backed in previews.
+    # real run — but ONLY those that honor a preview cap (max_results). The rest
+    # (multi-run/uncapped actors like Naukri/Twitter) would spend a full run's
+    # money on a test click, so they stay pool-backed in previews.
     _PREVIEWABLE = {"google_maps", "linkedin_people", "indiamart", "crunchbase",
                     "indeed", "rss_feeds", "hackernews"}
-    live_sources = [s for s in effective_sources if s in _PREVIEWABLE]
-    skipped = [s for s in effective_sources if s not in _PREVIEWABLE]
+    live_sources = [s for s in explicit_sources if s in _PREVIEWABLE]
+    skipped = [s for s in explicit_sources if s not in _PREVIEWABLE]
     if skipped:
         logger.info("Preview: skipping uncapped sources %s (pool-backed only)", skipped)
-    if live_sources and (filters.get("sources")
-                         or {"google_maps", "linkedin_people"} & set(effective_sources)):
+    if live_sources:
         from pipeline import preview_run  # lazy import avoids a startup cycle
 
         search = {
@@ -405,26 +406,31 @@ def create_pipeline(
     if not row:
         return _render_list(request, user, tenant, error="Failed to create the pipeline.", status_code=500)
 
-    # Creating the pipeline also STARTS it: fire the first scrape in the
-    # background — every enabled source/actor runs at once (parallel) and the
-    # leads land in the shared pool when the run finishes.
-    def _kickoff(v: str = vertical, f: Optional[dict[str, Any]] = filters or None) -> None:
-        import asyncio as aio
+    # Creating the pipeline also STARTS it — but ONLY when the operator enabled
+    # at least one tool. With nothing selected we do NOT fall back to a vertical
+    # default (that silently scraped IndiaMART); we save the pipeline and tell
+    # the operator to add a tool.
+    enabled = filters.get("sources") or []
+    if enabled:
+        def _kickoff(v: str = vertical, f: Optional[dict[str, Any]] = filters or None) -> None:
+            import asyncio as aio
 
-        from pipeline import run_pipeline
+            from pipeline import run_pipeline
 
-        try:
-            aio.run(run_pipeline(vertical=v, search=f))
-        except Exception as exc:  # noqa: BLE001
-            logger.error("First scrape for new pipeline failed: %s", exc)
+            try:
+                aio.run(run_pipeline(vertical=v, search=f))
+            except Exception as exc:  # noqa: BLE001
+                logger.error("First scrape for new pipeline failed: %s", exc)
 
-    threading.Thread(target=_kickoff, name="pipeline-kickoff", daemon=True).start()
-
-    notice = f"Pipeline “{name.strip()}” created — first scrape is running now."
+        threading.Thread(target=_kickoff, name="pipeline-kickoff", daemon=True).start()
+        notice = f"Pipeline “{name.strip()}” created — first scrape is running now ({', '.join(enabled)})."
+        logger.info("Created pipeline %s (%s); kickoff scrape started for %s", name, row.get("id"), enabled)
+    else:
+        notice = f"Pipeline “{name.strip()}” created. Add a tool (Google Maps or an actor) to start scraping."
+        logger.info("Created pipeline %s (%s); no tool enabled — no scrape", name, row.get("id"))
     if assign_me and user.get("email"):
         ok, err = assign_user_to_client(user["email"], str(row["id"]))
         notice += " You're now assigned to it." if ok else f" (couldn't assign you: {err})"
-    logger.info("Created pipeline %s (%s); kickoff scrape started", name, row.get("id"))
     return _render_list(request, user, tenant, notice=notice)
 
 

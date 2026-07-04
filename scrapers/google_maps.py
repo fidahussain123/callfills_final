@@ -98,7 +98,13 @@ class GoogleMapsScraper(ApifyScraper):
         """
         if not self._client:
             return []
-        categories = self._categories or ["restaurant"]
+        # No search term = don't scrape. A blank keyword must NOT silently fetch
+        # a default niche ("restaurant"/"barber") — that produced leads unrelated
+        # to the pipeline. The operator sees an empty preview and adds a keyword.
+        categories = self._categories
+        if not categories:
+            logger.warning("Google Maps: no keyword/category set — skipping (add a keyword to this pipeline)")
+            return []
         areas: list[Optional[str]] = [None] if self._zone else (self._cities or [settings.TARGET_LOCATION])
         raw: list[RawSignal] = []
         for category in categories:

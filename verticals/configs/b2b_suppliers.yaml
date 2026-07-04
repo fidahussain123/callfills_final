@@ -34,9 +34,9 @@ min_score: 40
 # Listings don't go stale like job posts.
 freshness_days: 3650
 
-# Defaults (overridden per pipeline via keywords/cities/max_results).
+# No default query/city: a pipeline supplies its own keywords + cities. With
+# neither, IndiaMART fetches nothing (rather than a stale "packaging machines"
+# in Mumbai), so leads always match what the pipeline asked for.
 filters:
-  categories: [packaging machines]
-  cities: [Mumbai]
   max_results: 25
   requires_optin: true

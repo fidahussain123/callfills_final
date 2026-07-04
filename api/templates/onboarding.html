@@ -42,7 +42,7 @@
     <div>
       <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">Vertical</label>
       <select name="vertical" class="w-full rounded-lg bg-canvas border border-edge px-3 py-2.5 text-sm text-slate-700 dark:text-slate-200 capitalize focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand">
-        {% for v in verticals %}<option value="{{ v }}">{{ v.replace('_',' ') }}</option>{% endfor %}
+        {% for v in verticals %}<option value="{{ v }}"{% if v == 'local_business' %} selected{% endif %}>{{ v.replace('_',' ') }}</option>{% endfor %}
       </select>
     </div>
     <div class="grid grid-cols-2 gap-3">

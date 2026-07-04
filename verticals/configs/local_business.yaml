@@ -36,8 +36,8 @@ min_score: 40
 # disabled for this vertical.
 freshness_days: 3650
 
-# Default search (overridden per pipeline via the ICP's keywords/cities).
+# No default category/city: a pipeline supplies its own keywords + cities. With
+# neither, Google Maps fetches nothing (rather than a stale demo term like
+# "barber"), so leads always match what the pipeline asked for.
 filters:
-  categories: [barber]
-  cities: [Bangalore]
   max_results: 40

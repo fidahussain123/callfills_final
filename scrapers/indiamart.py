@@ -65,14 +65,19 @@ class IndiaMartScraper(ApifyScraper):
 
     def build_input(self, lookback_days: int) -> dict[str, Any]:
         return {
-            "queries": self._queries or ["packaging machines"],
+            "queries": self._queries,
             "category": "all",
             "location": self._location,
             "maxResultsPerQuery": min(self._max, settings.MAX_ITEMS_PER_SOURCE),
         }
 
     def fetch(self, lookback_days: int) -> list[RawSignal]:
-        if not self._client:
+        # No query = don't scrape. A blank keyword must NOT silently fetch a
+        # default ("packaging machines") — that returned leads unrelated to the
+        # pipeline (and made an empty b2b_suppliers pipeline scrape IndiaMART).
+        if not self._client or not self._queries:
+            if not self._queries:
+                logger.warning("IndiaMART: no keyword/category set — skipping (add a keyword to this pipeline)")
             return []
         items = self.run_actor(self.build_input(lookback_days), max_items=self._max)
         return [RawSignal(source_platform=self.source_platform, data=i) for i in items]
