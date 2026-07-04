@@ -1,15 +1,22 @@
 """LinkedIn People source — find PEOPLE (founders/CTOs) directly, not companies.
 
-This is the person-first path: given job titles + location (+ optional company
-size), it runs the no-cookie ``harvestapi/linkedin-profile-search`` actor and
-returns each matching person — name, title, company, LinkedIn URL, email, and
-**follower count** — then drops anyone above ``max_followers`` (the "low
-followers" filter, applied after fetch because LinkedIn search can't filter on
-it). Powers pipelines like "startup founders in Bangalore with under 1000
-followers" for follower-growth / outreach offers.
+Person-first path: given job titles + location (+ optional company size /
+industry), it searches LinkedIn profiles and returns each person — name, title,
+company, LinkedIn URL, email and **follower count** — then drops anyone above
+``max_followers`` (the "low followers" filter). Powers pipelines like "startup
+founders in Bangalore with under 1000 followers".
 
-The chosen actor can be overridden via ``actor_id`` (the form's "Use this"),
-falling back to the correct people-search actor.
+Two search actors are supported (auto-detected from ``actor_id``):
+
+* ``apimaestro/linkedin-profile-search-scraper`` — **default**, pay-per-result
+  (uses Apify credits, no run cap). Searches one title × one location per run,
+  so we fan out across the pipeline's titles/cities.
+* ``harvestapi/linkedin-profile-search`` — array input, single run, richer
+  filters (industry, company headcount). Its FREE tier caps at 10 runs, so it's
+  only used when the operator explicitly picks it (e.g. after renting it).
+
+An incompatible "Use this" actor (a profile-DETAIL scraper that needs URLs)
+falls back to the default search actor.
 """
 
 from __future__ import annotations
@@ -22,6 +29,12 @@ from scrapers.base import ApifyScraper
 from scrapers.registry import register_scraper
 
 logger = logging.getLogger("lead-intel.scrapers.linkedin_people")
+
+_APIMAESTRO = "apimaestro/linkedin-profile-search-scraper"
+_HARVEST = "harvestapi/linkedin-profile-search"
+
+# Region words apimaestro (single-location search) can't resolve to a geo.
+_NON_GEO = {"europe", "asia", "worldwide", "global", "emea", "apac", "americas"}
 
 # LinkedIn headcount codes → we pick the small-startup bands from a max size.
 _HEADCOUNT = [("A", 0), ("B", 10), ("C", 50), ("D", 200), ("E", 500),
@@ -75,12 +88,8 @@ class LinkedInPeopleScraper(ApifyScraper):
 
     key = "linkedin_people"
     source_platform = "linkedin_profile"
-    actor_id = "harvestapi/linkedin-profile-search"
-    # Only a profile-SEARCH actor accepts our filtered-search input (job titles,
-    # locations, industries…). A profile-DETAIL scraper (e.g. the popular
-    # "linkedin-profile-scraper") needs profile URLs and rejects this input, so
-    # if "Use this" picked one we fall back to this search actor — see build_input.
-    _SEARCH_ACTOR = "harvestapi/linkedin-profile-search"
+    actor_id = _APIMAESTRO          # default: pay-per-result, no run cap
+    _DEFAULT_ACTOR = _APIMAESTRO
 
     def __init__(self) -> None:
         super().__init__()
@@ -126,16 +135,107 @@ class LinkedInPeopleScraper(ApifyScraper):
         if (cfg.get("actor_id") or "").strip():
             self.actor_id = cfg["actor_id"].strip()
 
-    def build_input(self, lookback_days: int) -> dict[str, Any]:
-        # Guard against an incompatible "Use this" actor: this source does a
-        # filtered SEARCH, so only a profile-search actor works. Anything else
-        # (a profile-detail scraper) would reject this input and return 0.
-        if "profile-search" not in (self.actor_id or ""):
-            logger.warning(
-                "LinkedIn People: %r is a profile-detail scraper, not a search actor — "
-                "using %s so the filtered search works", self.actor_id, self._SEARCH_ACTOR,
-            )
-            self.actor_id = self._SEARCH_ACTOR
+    # --- actor dispatch -----------------------------------------------------
+    def _ensure_actor(self) -> None:
+        """Force a SUPPORTED people-search actor (harvestapi or apimaestro).
+
+        Anything else — a profile-detail scraper that needs URLs — can't do a
+        filtered search and would return 0, so fall back to the default.
+        """
+        aid = (self.actor_id or "").strip()
+        if aid == _HARVEST or "apimaestro/linkedin-profile-search" in aid:
+            return
+        logger.warning(
+            "LinkedIn People: %r isn't a supported people-search actor — using %s",
+            aid or "(none)", self._DEFAULT_ACTOR,
+        )
+        self.actor_id = self._DEFAULT_ACTOR
+
+    def fetch(self, lookback_days: int) -> list[RawSignal]:
+        self._ensure_actor()
+        if "apimaestro" in self.actor_id:
+            return self._fetch_apimaestro()
+        return self._fetch_harvest()
+
+    def normalize(self, raw: RawSignal) -> Optional[NormalizedSignal]:
+        it = raw.data
+        if not isinstance(it, dict):
+            return None
+        # apimaestro nests everything under basic_info; harvestapi is flat.
+        if "basic_info" in it:
+            return self._normalize_apimaestro(it)
+        return self._normalize_harvest(it)
+
+    # --- apimaestro (default) ----------------------------------------------
+    def _fetch_apimaestro(self) -> list[RawSignal]:
+        """Fan out one title × one location per run (the actor's search unit)."""
+        titles = self._titles[:3] or ["Founder"]
+        locs = [l for l in self._locations if l.lower() not in _NON_GEO][:2] or [None]
+        combos = [(t, l) for t in titles for l in locs]
+        per = max(3, -(-self._max // len(combos)))  # ceil-divide, ≥3 per run
+        kept: list[RawSignal] = []
+        fetched = dropped = 0
+        for title, loc in combos:
+            run_input: dict[str, Any] = {
+                "current_job_title": title,
+                "max_profiles": per,
+                "include_email": self._email,
+            }
+            if loc:
+                run_input["location"] = loc
+            for it in self.run_actor(run_input, max_items=per):
+                fetched += 1
+                bi = it.get("basic_info") if isinstance(it, dict) else None
+                fc = (bi or {}).get("follower_count")
+                if self._max_followers is not None and isinstance(fc, (int, float)) and fc > self._max_followers:
+                    dropped += 1
+                    continue
+                kept.append(RawSignal(source_platform=self.source_platform, data=it))
+            if len(kept) >= self._max:
+                kept = kept[: self._max]
+                break
+        logger.info(
+            "LinkedIn People (apimaestro): %d combos, %d fetched, kept %d "
+            "(max_followers=%s, dropped %d over cap)",
+            len(combos), fetched, len(kept), self._max_followers, dropped,
+        )
+        return kept
+
+    def _normalize_apimaestro(self, it: dict[str, Any]) -> Optional[NormalizedSignal]:
+        bi = it.get("basic_info") or {}
+        if not isinstance(bi, dict):
+            return None
+        name = (bi.get("fullname")
+                or ((bi.get("first_name") or "") + " " + (bi.get("last_name") or "")).strip())
+        if not name:
+            return None
+        loc = bi.get("location") if isinstance(bi.get("location"), dict) else {}
+        city = loc.get("city") or loc.get("full") or loc.get("country")
+        pid = bi.get("public_identifier")
+        url = bi.get("profile_url") or (f"https://linkedin.com/in/{pid}" if pid else "")
+        email = bi.get("email")
+        return NormalizedSignal(
+            company_name=name,
+            company_domain=None,
+            signal_type="linkedin_profile",
+            source_platform=self.source_platform,
+            raw_text=(bi.get("headline") or name),
+            source_url=url,
+            detected_at=self.cutoff(0),
+            metadata={
+                "headline": bi.get("headline"),
+                "followers": bi.get("follower_count"),
+                "connections": bi.get("connection_count"),
+                "linkedin_url": url,
+                "email": email if isinstance(email, str) else None,
+                "company": bi.get("current_company"),
+                "location": city,
+                "is_influencer": bi.get("is_influencer"),
+            },
+        )
+
+    # --- harvestapi (opt-in, rented) ---------------------------------------
+    def build_input(self, lookback_days: int = 0) -> dict[str, Any]:
         run_input: dict[str, Any] = {
             "profileScraperMode": "Full + email search" if self._email else "Full",
             "currentJobTitles": self._titles,
@@ -153,26 +253,23 @@ class LinkedInPeopleScraper(ApifyScraper):
                 run_input["companyHeadcount"] = codes
         return run_input
 
-    def fetch(self, lookback_days: int) -> list[RawSignal]:
-        items = self.run_actor(self.build_input(lookback_days))
+    def _fetch_harvest(self) -> list[RawSignal]:
+        items = self.run_actor(self.build_input())
         kept: list[RawSignal] = []
         dropped = 0
         for it in items:
-            fc = it.get("followerCount")
+            fc = it.get("followerCount") if isinstance(it, dict) else None
             if self._max_followers is not None and isinstance(fc, (int, float)) and fc > self._max_followers:
                 dropped += 1
                 continue
             kept.append(RawSignal(source_platform=self.source_platform, data=it))
         logger.info(
-            "LinkedIn People: %d profiles, kept %d (max_followers=%s, dropped %d over cap)",
+            "LinkedIn People (harvestapi): %d profiles, kept %d (max_followers=%s, dropped %d over cap)",
             len(items), len(kept), self._max_followers, dropped,
         )
         return kept
 
-    def normalize(self, raw: RawSignal) -> Optional[NormalizedSignal]:
-        it = raw.data
-        if not isinstance(it, dict):
-            return None
+    def _normalize_harvest(self, it: dict[str, Any]) -> Optional[NormalizedSignal]:
         name = ((it.get("firstName") or "") + " " + (it.get("lastName") or "")).strip()
         if not name:
             return None
@@ -185,8 +282,7 @@ class LinkedInPeopleScraper(ApifyScraper):
             pos = pos[0] if pos else {}
         if not isinstance(pos, dict):
             pos = {}
-        # harvestapi returns email as {"email": "...", "qualityScore": N} or a
-        # plain string; and `emails` as a list of either. Coerce to a string.
+
         def _email_str(v: Any) -> Optional[str]:
             if isinstance(v, dict):
                 return v.get("email")
