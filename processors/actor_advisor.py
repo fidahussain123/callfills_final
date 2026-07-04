@@ -23,7 +23,83 @@ from config import settings
 logger = logging.getLogger("lead-intel.processors.actor_advisor")
 
 _STORE_URL = "https://api.apify.com/v2/store"
+_ACTS_URL = "https://api.apify.com/v2/acts"
 _TIMEOUT = 25.0
+
+
+def _is_search_field(name: str, title: str) -> bool:
+    """Heuristic: is this the actor's keyword/search input?"""
+    t = f"{name} {title}".lower()
+    return any(k in t for k in (
+        "search", "query", "queries", "keyword", "term", "searchstring", "job title",
+    ))
+
+
+def fetch_actor_schema(actor_id: str) -> dict[str, Any]:
+    """Fetch an actor's live INPUT schema so the operator can see exactly what it
+    searches on (and which field their keywords feed) before scraping.
+
+    Two Apify REST calls: the actor (for title/desc + latest build id) then that
+    build (for the input schema). Fail-open: returns ``{"error": ...}``.
+    """
+    if not (settings.APIFY_API_TOKEN and (actor_id or "").strip()):
+        return {"id": actor_id, "error": "Apify token or actor id missing."}
+    aid = actor_id.strip().replace("/", "~")
+    # Token in the Authorization header (not the query string) so it never lands
+    # in a URL — and therefore never in an error message / log line.
+    headers = {"Authorization": f"Bearer {settings.APIFY_API_TOKEN}"}
+    try:
+        act_resp = httpx.get(f"{_ACTS_URL}/{aid}", headers=headers, timeout=_TIMEOUT)
+        act_resp.raise_for_status()
+        act = act_resp.json().get("data") or {}
+        build_id = ((act.get("taggedBuilds") or {}).get("latest") or {}).get("buildId")
+        props: dict[str, Any] = {}
+        required: list[str] = []
+        if build_id:
+            build_resp = httpx.get(f"{_ACTS_URL}/{aid}/builds/{build_id}",
+                                   headers=headers, timeout=_TIMEOUT)
+            build_resp.raise_for_status()
+            build = build_resp.json().get("data") or {}
+            schema = build.get("inputSchema")
+            if isinstance(schema, str):
+                schema = json.loads(schema)
+            if isinstance(schema, dict):
+                props = schema.get("properties") or {}
+                required = schema.get("required") or []
+    except Exception as exc:  # noqa: BLE001 - fail-open
+        logger.error("actor schema fetch failed for %s: %s", actor_id, exc)
+        return {"id": actor_id, "error": "Couldn't load this actor's fields right now."}
+
+    fields: list[dict[str, Any]] = []
+    search_fields: list[str] = []
+    for name, p in props.items():
+        if not isinstance(p, dict):
+            continue
+        title = p.get("title") or name
+        is_search = _is_search_field(name, title)
+        if is_search:
+            search_fields.append(title)
+        enum = p.get("enum")
+        fields.append({
+            "name": name,
+            "title": title,
+            "type": p.get("type"),
+            "desc": " ".join((p.get("description") or "").split())[:150],
+            "is_search": is_search,
+            "required": name in required,
+            "options": [str(e) for e in enum[:6]] if isinstance(enum, list) else None,
+        })
+    # Search fields first, then required, then the rest.
+    fields.sort(key=lambda f: (not f["is_search"], not f["required"]))
+    return {
+        "id": actor_id,
+        "title": act.get("title") or act.get("name") or actor_id,
+        "description": " ".join((act.get("description") or "").split())[:240],
+        "url": f"https://apify.com/{actor_id}",
+        "fields": fields,
+        "search_fields": search_fields,
+        "field_count": len(fields),
+    }
 
 
 def _price_summary(actor: dict[str, Any]) -> tuple[str, Optional[float]]:

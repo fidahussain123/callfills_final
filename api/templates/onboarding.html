@@ -114,6 +114,7 @@
       </div>
       <div id="advisorSpin" class="htmx-indicator text-[11px] text-muted mt-1.5">Searching Apify + ranking actors…</div>
       <div id="advisorResult" class="mt-2"></div>
+      <div id="actorSchema" class="mt-2"></div>
       <input type="hidden" name="actor_id" id="actorId" />
       <input type="hidden" name="actor_overrides" id="actorOverrides" />
       <div id="sourcesHidden"></div>
@@ -336,8 +337,24 @@
 
   /* Fill the advisor query + fire "Ask AI" (used by the tool dropdown). */
   function cfAskActor(s) {
+    var sc = document.getElementById("actorSchema"); if (sc) sc.innerHTML = "";  // drop stale inspector
     var i = document.getElementById("advisorQ");
     if (i) { i.value = s; if (window.htmx) htmx.trigger(document.getElementById("advisorBtn"), "click"); }
+  }
+  /* Load an actor's live INPUT schema into the inspector — see what it searches
+     on + which field your keywords feed, before scraping. */
+  function cfLoadSchema(id, source) {
+    if (window.htmx) htmx.ajax("POST", "/pipelines/actor-schema", { target: "#actorSchema", swap: "innerHTML", values: { id: id, source: source || "" } });
+  }
+  /* Push keywords from the inspector into the pipeline's Keywords field — that's
+     what actually gets sent to the actor's search. */
+  function cfUseKeywords(v) {
+    var i = document.querySelector('form[action="/pipelines/create"] input[name="keywords"]');
+    if (!i) return;
+    i.value = v;
+    i.focus();
+    i.classList.add("ring-2", "ring-brand");
+    setTimeout(function () { i.classList.remove("ring-2", "ring-brand"); }, 900);
   }
   /* "Use this" on an advisor result → SAVE that actor for its tool (falls back
      to the tool picked in the dropdown). Picks across tools accumulate; every
@@ -367,6 +384,7 @@
       panel.classList.add("ring-2", "ring-emerald-400");
       setTimeout(function () { panel.classList.remove("ring-2", "ring-emerald-400"); }, 900);
     }
+    cfLoadSchema(id, key);   // show the actor's fields + keyword setter on add
   }
 
   /* Vertical sync + draw-a-zone map visibility (Google Maps only). */

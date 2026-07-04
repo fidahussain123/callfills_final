@@ -28,9 +28,14 @@
         {% if a.desc %}<p class="text-[11px] text-muted mt-1">{{ a.desc }}</p>{% endif %}
         <p class="text-[10px] text-muted/70 mt-0.5 font-mono truncate">{{ a.id }}</p>
       </div>
-      <button type="button"
-              onclick='cfPickActor(this, {{ a.id|tojson }}, {{ a.title|tojson }}, {{ (("$" ~ a.cost_per_1k ~ "/1k") if a.cost_per_1k is not none else a.price_display)|tojson }}, {{ (a.source_key or "")|tojson }})'
-              class="shrink-0 rounded-lg {{ 'bg-brand text-white hover:bg-brandmed' if a.recommended else 'border border-edge bg-panel hover:bg-surface text-ink' }} text-xs font-semibold px-3 py-1.5 transition">Use this</button>
+      <div class="shrink-0 flex items-center gap-1.5">
+        <button type="button"
+                onclick='cfLoadSchema({{ a.id|tojson }}, {{ (a.source_key or "")|tojson }})'
+                class="rounded-lg border border-edge bg-panel hover:bg-surface text-muted hover:text-ink text-xs font-medium px-2.5 py-1.5 transition">🔍 Fields</button>
+        <button type="button"
+                onclick='cfPickActor(this, {{ a.id|tojson }}, {{ a.title|tojson }}, {{ (("$" ~ a.cost_per_1k ~ "/1k") if a.cost_per_1k is not none else a.price_display)|tojson }}, {{ (a.source_key or "")|tojson }})'
+                class="rounded-lg {{ 'bg-brand text-white hover:bg-brandmed' if a.recommended else 'border border-edge bg-panel hover:bg-surface text-ink' }} text-xs font-semibold px-3 py-1.5 transition">Use this</button>
+      </div>
     </div>
   </li>
   {% endfor %}

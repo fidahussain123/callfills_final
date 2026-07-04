@@ -445,6 +445,26 @@ def pipeline_advisor(request: Request, q: str = Form(""), user: dict = Depends(r
     )
 
 
+@router.post("/pipelines/actor-schema", response_class=HTMLResponse)
+def actor_schema(
+    request: Request,
+    id: str = Form(""),
+    source: str = Form(""),
+    user: dict = Depends(require_user),
+):
+    """Show an actor's live input fields so the operator sees what it searches on
+    (and where their keywords go) before scraping."""
+    _tenant, redirect = _require_operator(user)
+    if redirect:
+        return redirect
+    from processors.actor_advisor import fetch_actor_schema
+
+    return templates.TemplateResponse(
+        request, "partials/actor_schema.html",
+        {"r": fetch_actor_schema(id), "source": source},
+    )
+
+
 @router.post("/pipelines/assign", response_class=HTMLResponse)
 def assign_from_list(
     request: Request,
