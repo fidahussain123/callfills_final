@@ -239,6 +239,7 @@ def _edit_context(edit_client: Optional[dict[str, Any]]) -> dict[str, Any]:
     edit_seed = {
         "sources": f.get("sources") or [],
         "actors": f.get("actor_overrides") or {},
+        "actor_id": f.get("actor_id"),
         "geo": f.get("custom_geolocation"),
     }
     return {"edit_client": edit_client, "active_signals": active_signals, "edit_seed": edit_seed}
@@ -504,10 +505,12 @@ def update_pipeline(
     )
     from db import supabase_client as db
 
+    # NOTE: min_score is intentionally NOT written — the form has no min_score
+    # field, so including it would clobber the stored threshold with the Form
+    # default (60) on every save. Only the edited fields are updated.
     row = db.update_client_row(client_id, {
         "name": name.strip(),
         "vertical": vertical,
-        "min_score": int(min_score),
         "filters": filters,
     })
     if not row:

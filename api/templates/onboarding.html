@@ -304,6 +304,9 @@
     linkedin_jobs: "linkedin jobs", linkedin_people: "linkedin profile search email finder",
     twitter: "twitter scraper", facebook_ads: "facebook ads" };
   var cfSources = [], cfActors = {}, cfPendingTool = "";
+  /* Saved pipeline being edited (null in create mode). Declared here so the
+     vertical-sync below can avoid wiping the operator's configured actors. */
+  var EDIT = {% if edit_client %}{{ edit_seed | tojson }}{% else %}null{% endif %};
   function cfEsc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function cfMapsBox() { return document.querySelector('input[name="sources"][value="google_maps"]'); }
   function cfRender() {
@@ -415,10 +418,15 @@
       }
     }
     function sync() {
-      var defs = (sel && V_SOURCES[sel.value]) || [];
-      var b = cfMapsBox(); if (b) b.checked = defs.indexOf("google_maps") !== -1;
-      cfSources = []; cfActors = {}; cfPendingTool = "";   // vertical change resets tool picks
-      cfRender();
+      // In EDIT mode keep the operator's configured tools/actors on a vertical
+      // change (wiping them would silently drop saved actors on save). Only
+      // create mode adopts the new vertical's default sources.
+      if (!EDIT) {
+        var defs = (sel && V_SOURCES[sel.value]) || [];
+        var b = cfMapsBox(); if (b) b.checked = defs.indexOf("google_maps") !== -1;
+        cfSources = []; cfActors = {}; cfPendingTool = "";
+        cfRender();
+      }
       updateMap();
     }
     var mb = cfMapsBox();
@@ -438,9 +446,8 @@
     sync();
   })();
 
-  /* EDIT mode: after the vertical sync wiped state on load, restore the saved
-     tools/actors/zone so the form reflects the existing pipeline. */
-  var EDIT = {% if edit_client %}{{ edit_seed | tojson }}{% else %}null{% endif %};
+  /* EDIT mode: restore the saved tools/actors/zone so the form reflects the
+     existing pipeline (runs after the sync above). */
   if (EDIT) {
     var _mb = cfMapsBox();
     if (_mb) _mb.checked = (EDIT.sources || []).indexOf("google_maps") !== -1;
@@ -452,6 +459,9 @@
     if (EDIT.geo) { var _g = document.getElementById("geo-zone-input"); if (_g) _g.value = JSON.stringify(EDIT.geo); }
     if (window.cfSyncMap) cfSyncMap();
     cfRender();
+    // Preserve a legacy single actor_id (pipelines from before per-source
+    // overrides) — cfRender blanks #actorId when no override chips exist.
+    if (EDIT.actor_id) { var _a = document.getElementById("actorId"); if (_a && !_a.value) _a.value = EDIT.actor_id; }
   }
 </script>
 {% endblock %}
