@@ -229,6 +229,21 @@ def _require_operator(user: dict[str, Any]):
     return tenant, None
 
 
+def _edit_context(edit_client: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Pre-fill helpers for the form when editing a pipeline (else empty)."""
+    if not edit_client:
+        return {"edit_client": None, "active_signals": [], "edit_seed": None}
+    f = edit_client.get("filters") or {}
+    have = set(f.get("signal_types") or [])
+    active_signals = [name for name, types in _SIGNAL_MAP.items() if have & set(types)]
+    edit_seed = {
+        "sources": f.get("sources") or [],
+        "actors": f.get("actor_overrides") or {},
+        "geo": f.get("custom_geolocation"),
+    }
+    return {"edit_client": edit_client, "active_signals": active_signals, "edit_seed": edit_seed}
+
+
 def _render_list(
     request: Request,
     user: dict[str, Any],
@@ -237,8 +252,13 @@ def _render_list(
     notice: Optional[str] = None,
     error: Optional[str] = None,
     status_code: int = 200,
+    edit_client: Optional[dict[str, Any]] = None,
 ) -> HTMLResponse:
-    """Render the Pipelines list (create + assign + all pipelines)."""
+    """Render the Pipelines list (create + assign + all pipelines).
+
+    With ``edit_client`` the create form renders in EDIT mode: pre-filled and
+    posting to the update route (the list/assign panels are hidden).
+    """
     clients: list[dict[str, Any]] = []
     if _supabase_ready():
         try:
@@ -261,6 +281,7 @@ def _render_list(
             "known_cities": _known_cities(),
             "notice": notice,
             "error": error,
+            **_edit_context(edit_client),
         },
         status_code=status_code,
     )
@@ -432,6 +453,70 @@ def create_pipeline(
         ok, err = assign_user_to_client(user["email"], str(row["id"]))
         notice += " You're now assigned to it." if ok else f" (couldn't assign you: {err})"
     return _render_list(request, user, tenant, notice=notice)
+
+
+@router.get("/pipelines/{client_id}/edit", response_class=HTMLResponse)
+def edit_pipeline_form(request: Request, client_id: str, user: dict = Depends(require_user)):
+    """Render the pipeline form pre-filled for editing an existing pipeline."""
+    tenant, redirect = _require_operator(user)
+    if redirect:
+        return redirect
+    if not _supabase_ready():
+        return RedirectResponse("/pipelines", status_code=303)
+    from db import supabase_client as db
+
+    client = db.get_client_by_id(client_id)
+    if not client:
+        return RedirectResponse("/pipelines", status_code=303)
+    return _render_list(request, user, tenant, edit_client=client)
+
+
+@router.post("/pipelines/{client_id}/edit", response_class=HTMLResponse)
+def update_pipeline(
+    request: Request,
+    client_id: str,
+    user: dict = Depends(require_user),
+    name: str = Form(...),
+    vertical: str = Form("recruitment"),
+    min_score: int = Form(60),
+    description: str = Form(""),
+    industries: str = Form(""),
+    cities: str = Form(""),
+    keywords: str = Form(""),
+    employee_min: str = Form(""),
+    employee_max: str = Form(""),
+    signal_focus: list[str] = Form([]),
+    geo_zone: str = Form(""),
+    sources: list[str] = Form([]),
+    actor_id: str = Form(""),
+    actor_overrides: str = Form(""),
+):
+    """Save edits to an existing pipeline (no auto-scrape — use Run scrape)."""
+    tenant, redirect = _require_operator(user)
+    if redirect:
+        return redirect
+    if not _supabase_ready():
+        return _render_list(request, user, tenant, error="Supabase isn't configured.", status_code=400)
+    filters = _build_icp(
+        description=description, industries=industries, cities=cities, keywords=keywords,
+        employee_min=employee_min, employee_max=employee_max, signal_focus=signal_focus,
+        geo_zone=geo_zone, sources=sources, actor_id=actor_id, actor_overrides=actor_overrides,
+    )
+    from db import supabase_client as db
+
+    row = db.update_client_row(client_id, {
+        "name": name.strip(),
+        "vertical": vertical,
+        "min_score": int(min_score),
+        "filters": filters,
+    })
+    if not row:
+        return _render_list(request, user, tenant, error="Couldn't save the pipeline.", status_code=500)
+    logger.info("Updated pipeline %s (%s)", name, client_id)
+    return RedirectResponse(
+        f"/pipelines/{client_id}?notice=" + quote_plus(f"Pipeline “{name.strip()}” updated."),
+        status_code=303,
+    )
 
 
 @router.post("/pipelines/advisor", response_class=HTMLResponse)

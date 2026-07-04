@@ -287,6 +287,22 @@ def create_client_row(payload: dict[str, Any]) -> Optional[dict[str, Any]]:
         return None
 
 
+def update_client_row(client_id: str, payload: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Update an existing client row (only the given fields) and return it.
+
+    Used by the pipeline editor — ``filters`` is replaced wholesale so removed
+    ICP keys (e.g. an actor the operator deleted) actually go away; untouched
+    columns (active, plan, created_at) are preserved.
+    """
+    client = get_client()
+    try:
+        res = client.table("clients").update(payload).eq("id", client_id).execute()
+        return res.data[0] if res.data else None
+    except Exception as exc:  # noqa: BLE001
+        logger.error("update_client_row failed: %s", exc)
+        return None
+
+
 def get_client_by_id(client_id: str) -> Optional[dict[str, Any]]:
     """Fetch a single client row by id."""
     client = get_client()

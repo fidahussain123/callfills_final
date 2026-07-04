@@ -22,33 +22,37 @@
 </div>
 {% endif %}
 
-<div class="grid lg:grid-cols-2 gap-5 mb-8">
-  <!-- Create pipeline (campaign) -->
-  <form method="post" action="/pipelines/create" class="rounded-2xl bg-panel border border-edge p-5 shadow-card space-y-4">
-    <div>
-      <h3 class="text-[15px] font-bold text-ink tracking-tight">New pipeline</h3>
-      <p class="text-xs text-muted mt-0.5">Define the campaign, <span class="font-medium text-ink">preview the leads</span> to check the fetch, then create &amp; assign.</p>
+{% set ef = (edit_client.filters or {}) if edit_client else {} %}
+<div class="grid {% if not edit_client %}lg:grid-cols-2{% endif %} gap-5 mb-8">
+  <!-- Create / edit pipeline (campaign) -->
+  <form id="pipelineForm" method="post" action="{% if edit_client %}/pipelines/{{ edit_client.id }}/edit{% else %}/pipelines/create{% endif %}" class="rounded-2xl bg-panel border border-edge p-5 shadow-card space-y-4">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h3 class="text-[15px] font-bold text-ink tracking-tight">{% if edit_client %}Edit pipeline{% else %}New pipeline{% endif %}</h3>
+        <p class="text-xs text-muted mt-0.5">{% if edit_client %}Change the vertical, targeting or actors, then save — run it from the pipeline page.{% else %}Define the campaign, <span class="font-medium text-ink">preview the leads</span> to check the fetch, then create &amp; assign.{% endif %}</p>
+      </div>
+      {% if edit_client %}<a href="/pipelines/{{ edit_client.id }}" class="shrink-0 rounded-lg border border-edge bg-canvas hover:bg-surface text-muted hover:text-ink text-xs font-medium px-3 py-1.5 transition">Cancel</a>{% endif %}
     </div>
     <div>
       <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">Pipeline name</label>
-      <input name="name" required placeholder="Bangalore Fintech Recruiting"
+      <input name="name" required placeholder="Bangalore Fintech Recruiting" value="{{ edit_client.name if edit_client else '' }}"
              class="w-full rounded-lg bg-canvas border border-edge px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
     </div>
     <div>
       <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">Description <span class="text-muted/60 normal-case font-normal">(what this campaign targets &amp; why)</span></label>
       <textarea name="description" rows="2" placeholder="Funded fintech startups in Bangalore hiring engineers — sold to recruiting agencies."
-                class="w-full rounded-lg bg-canvas border border-edge px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand resize-none"></textarea>
+                class="w-full rounded-lg bg-canvas border border-edge px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand resize-none">{{ ef.description or '' }}</textarea>
     </div>
     <div>
       <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">Vertical</label>
       <select name="vertical" class="w-full rounded-lg bg-canvas border border-edge px-3 py-2.5 text-sm text-slate-700 dark:text-slate-200 capitalize focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand">
-        {% for v in verticals %}<option value="{{ v }}"{% if v == 'local_business' %} selected{% endif %}>{{ v.replace('_',' ') }}</option>{% endfor %}
+        {% for v in verticals %}<option value="{{ v }}"{% if v == (edit_client.vertical if edit_client else 'local_business') %} selected{% endif %}>{{ v.replace('_',' ') }}</option>{% endfor %}
       </select>
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div>
         <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">Industries</label>
-        <input name="industries" placeholder="fintech, saas"
+        <input name="industries" placeholder="fintech, saas" value="{{ (ef.industries or [])|join(', ') }}"
                class="w-full rounded-lg bg-canvas border border-edge px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
       </div>
       <div>
@@ -57,7 +61,7 @@
           <svg class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="9" cy="9" r="6" /><path d="M14 14l4 4" stroke-linecap="round" />
           </svg>
-          <input name="cities" id="cityInput" autocomplete="off" placeholder="Search any city, town or village…"
+          <input name="cities" id="cityInput" autocomplete="off" placeholder="Search any city, town or village…" value="{{ (ef.cities or [])|join(', ') }}"
                  class="w-full rounded-lg bg-canvas border border-edge pl-9 pr-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
           <ul id="citySuggest" class="hidden absolute z-30 mt-1 w-full max-h-52 overflow-auto rounded-lg border border-edge bg-panel shadow-lift text-sm py-1"></ul>
         </div>
@@ -67,16 +71,16 @@
     <div class="grid grid-cols-2 gap-3">
       <div>
         <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">Keywords</label>
-        <input name="keywords" placeholder="backend, engineer"
+        <input name="keywords" placeholder="backend, engineer" value="{{ (ef.keywords or [])|join(', ') }}"
                class="w-full rounded-lg bg-canvas border border-edge px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
       </div>
       <div>
         <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">Company size <span class="text-muted/60 normal-case font-normal">(emp.)</span></label>
         <div class="flex items-center gap-2">
-          <input type="number" name="employee_min" placeholder="min" min="0"
+          <input type="number" name="employee_min" placeholder="min" min="0" value="{{ ef.get('employee_min','') if ef else '' }}"
                  class="w-full rounded-lg bg-canvas border border-edge px-3 py-2.5 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
           <span class="text-muted text-sm">–</span>
-          <input type="number" name="employee_max" placeholder="max" min="0"
+          <input type="number" name="employee_max" placeholder="max" min="0" value="{{ ef.get('employee_max','') if ef else '' }}"
                  class="w-full rounded-lg bg-canvas border border-edge px-3 py-2.5 text-sm text-slate-700 dark:text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand" />
         </div>
       </div>
@@ -171,9 +175,9 @@
     <div>
       <label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted mb-1.5">Signal focus <span class="text-muted/60 normal-case font-normal">(leave all off = any)</span></label>
       <div class="flex flex-wrap gap-4 text-sm text-slate-600 dark:text-slate-300">
-        <label class="flex items-center gap-1.5 cursor-pointer select-none"><input type="checkbox" name="signal_focus" value="hiring" class="h-4 w-4 rounded border-edge accent-brand" /> Hiring</label>
-        <label class="flex items-center gap-1.5 cursor-pointer select-none"><input type="checkbox" name="signal_focus" value="funding" class="h-4 w-4 rounded border-edge accent-brand" /> Funding</label>
-        <label class="flex items-center gap-1.5 cursor-pointer select-none"><input type="checkbox" name="signal_focus" value="intent" class="h-4 w-4 rounded border-edge accent-brand" /> Intent</label>
+        <label class="flex items-center gap-1.5 cursor-pointer select-none"><input type="checkbox" name="signal_focus" value="hiring" {% if 'hiring' in active_signals %}checked{% endif %} class="h-4 w-4 rounded border-edge accent-brand" /> Hiring</label>
+        <label class="flex items-center gap-1.5 cursor-pointer select-none"><input type="checkbox" name="signal_focus" value="funding" {% if 'funding' in active_signals %}checked{% endif %} class="h-4 w-4 rounded border-edge accent-brand" /> Funding</label>
+        <label class="flex items-center gap-1.5 cursor-pointer select-none"><input type="checkbox" name="signal_focus" value="intent" {% if 'intent' in active_signals %}checked{% endif %} class="h-4 w-4 rounded border-edge accent-brand" /> Intent</label>
       </div>
     </div>
 
@@ -187,15 +191,18 @@
       <div id="pipeline-preview" class="mt-3"></div>
     </div>
 
+    {% if not edit_client %}
     <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer select-none">
       <input type="checkbox" name="assign_me" value="yes" class="h-4 w-4 rounded border-edge accent-brand" /> Assign this pipeline to me
     </label>
+    {% endif %}
     <button type="submit" {% if not supabase_ready %}disabled{% endif %}
             class="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-brand-gradient hover:opacity-95 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-2.5 shadow-brand transition">
-      Create pipeline &amp; start scraping
+      {% if edit_client %}Save changes{% else %}Create pipeline &amp; start scraping{% endif %}
     </button>
   </form>
 
+  {% if not edit_client %}
   <!-- Assign user -->
   <form method="post" action="/pipelines/assign" class="rounded-2xl bg-panel border border-edge p-5 shadow-card space-y-4 self-start">
     <div>
@@ -220,8 +227,10 @@
     </button>
     {% if not clients %}<p class="text-xs text-muted text-center">Create a pipeline first.</p>{% endif %}
   </form>
+  {% endif %}
 </div>
 
+{% if not edit_client %}
 <!-- All pipelines -->
 <div class="rounded-xl bg-panel border border-edge overflow-hidden shadow-card">
   <div class="px-5 py-3 border-b border-edge">
@@ -279,6 +288,7 @@
   </div>
   {% endif %}
 </div>
+{% endif %}
 
 <script>
   /* ——— Scraper tools: multi-actor selection ————————————————————————
@@ -349,7 +359,7 @@
   /* Push keywords from the inspector into the pipeline's Keywords field — that's
      what actually gets sent to the actor's search. */
   function cfUseKeywords(v) {
-    var i = document.querySelector('form[action="/pipelines/create"] input[name="keywords"]');
+    var i = document.querySelector('#pipelineForm input[name="keywords"]');
     if (!i) return;
     i.value = v;
     i.focus();
@@ -390,7 +400,7 @@
   /* Vertical sync + draw-a-zone map visibility (Google Maps only). */
   (function () {
     var V_SOURCES = {{ vertical_sources | tojson }};
-    var form = document.querySelector('form[action="/pipelines/create"]');
+    var form = document.getElementById("pipelineForm");
     if (!form) return;
     var sel = form.querySelector('select[name="vertical"]');
     var zone = document.getElementById("zone-picker");   // the map + radius block
@@ -427,5 +437,21 @@
     window.cfSyncMap = updateMap;
     sync();
   })();
+
+  /* EDIT mode: after the vertical sync wiped state on load, restore the saved
+     tools/actors/zone so the form reflects the existing pipeline. */
+  var EDIT = {% if edit_client %}{{ edit_seed | tojson }}{% else %}null{% endif %};
+  if (EDIT) {
+    var _mb = cfMapsBox();
+    if (_mb) _mb.checked = (EDIT.sources || []).indexOf("google_maps") !== -1;
+    cfSources = (EDIT.sources || []).filter(function (s) { return s !== "google_maps"; });
+    cfActors = {};
+    Object.keys(EDIT.actors || {}).forEach(function (k) {
+      cfActors[k] = { id: EDIT.actors[k], title: EDIT.actors[k], price: "" };
+    });
+    if (EDIT.geo) { var _g = document.getElementById("geo-zone-input"); if (_g) _g.value = JSON.stringify(EDIT.geo); }
+    if (window.cfSyncMap) cfSyncMap();
+    cfRender();
+  }
 </script>
 {% endblock %}

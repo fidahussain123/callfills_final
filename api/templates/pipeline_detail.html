@@ -4,15 +4,22 @@
 {% block page_subtitle %}Pipeline · {{ client.vertical.replace('_',' ') }} · the leads below are this pipeline’s scoped slice of the pool.{% endblock %}
 
 {% block header_actions %}
-<form hx-post="/dashboard/run" hx-target="#run-panel" hx-swap="innerHTML">
-  <input type="hidden" name="vertical" value="{{ client.vertical }}" />
-  <input type="hidden" name="client_id" value="{{ client.id }}" />
-  <button type="submit"
-          class="inline-flex items-center gap-1.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white text-sm font-semibold px-4 py-2 shadow-brand transition active:scale-[0.98]">
-    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 4.2a1 1 0 0 0-1.5.86v9.88a1 1 0 0 0 1.5.86l8.5-4.94a1 1 0 0 0 0-1.72L6.3 4.2Z"/></svg>
-    Run scrape
-  </button>
-</form>
+<div class="flex items-center gap-2">
+  <a href="/pipelines/{{ client.id }}/edit"
+     class="inline-flex items-center gap-1.5 rounded-lg border border-edge bg-panel hover:bg-surface text-ink text-sm font-semibold px-4 py-2 transition">
+    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M13.5 3.5l3 3L7 16l-3.5.5L4 13z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Edit
+  </a>
+  <form hx-post="/dashboard/run" hx-target="#run-panel" hx-swap="innerHTML">
+    <input type="hidden" name="vertical" value="{{ client.vertical }}" />
+    <input type="hidden" name="client_id" value="{{ client.id }}" />
+    <button type="submit"
+            class="inline-flex items-center gap-1.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white text-sm font-semibold px-4 py-2 shadow-brand transition active:scale-[0.98]">
+      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 4.2a1 1 0 0 0-1.5.86v9.88a1 1 0 0 0 1.5.86l8.5-4.94a1 1 0 0 0 0-1.72L6.3 4.2Z"/></svg>
+      Run scrape
+    </button>
+  </form>
+</div>
 {% endblock %}
 
 {% block content %}
