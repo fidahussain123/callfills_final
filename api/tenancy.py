@@ -151,7 +151,11 @@ def apply_icp(leads: list[dict[str, Any]], client: Optional[dict[str, Any]]) -> 
             ind = (lead.get("industry") or "").lower()
             if ind and ind not in industries:
                 continue
-        if cities:
+        # linkedin_people "cities" are country/region SEARCH locations (India,
+        # United States, Europe) applied at scrape time by the LinkedIn actor —
+        # NOT the lead's city. Matching them against a person's city ("Delhi" vs
+        # "India") wrongly hides already-targeted people, so skip the post-filter.
+        if cities and vertical != "linkedin_people":
             loc = (lead.get("location") or "").lower()
             # Only filter leads that actually carry a location; an alias-aware
             # canonical match ("New Delhi" -> delhi) with a raw-substring fallback.
@@ -162,11 +166,12 @@ def apply_icp(leads: list[dict[str, Any]], client: Optional[dict[str, Any]]) -> 
                 )
                 if not matched:
                     continue
-        # `keywords` on a DIRECTORY pipeline (Google Maps / IndiaMART) is the
-        # SEARCH category, already applied at scrape time — not a post-filter on
-        # the lead's name. Re-filtering here wrongly hides Maps leads (an agency
-        # named "Social Beelines" doesn't contain "marketing agency").
-        if keywords and vertical not in ("local_business", "b2b_suppliers"):
+        # `keywords` on a scrape-TARGETED pipeline (Google Maps / IndiaMART =
+        # search category; LinkedIn People = job titles) is applied at scrape
+        # time — not a post-filter on the lead's name. Re-filtering here wrongly
+        # hides them (a Maps agency "Social Beelines" doesn't contain "marketing
+        # agency"; a person's name doesn't contain "CTO").
+        if keywords and vertical not in ("local_business", "b2b_suppliers", "linkedin_people"):
             hay = " ".join(
                 str(lead.get(k) or "") for k in ("company_name", "website", "location", "summary")
             ).lower()

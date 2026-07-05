@@ -73,7 +73,7 @@ def dashboard(request: Request, user: dict = Depends(require_user)) -> HTMLRespo
     dashboard is a glanceable summary, not the working list.
     """
     tenant = resolve_tenant(user)
-    leads = scope_leads(tenant, store.get_leads(limit=300))
+    leads = scope_leads(tenant, store.get_leads(limit=2000))
     top_leads = leads[:8]  # store returns best-first (internal rank, no visible score)
 
     def _latest(lead: dict[str, Any]) -> str:

@@ -63,7 +63,7 @@ def _age(detected_at: Any) -> tuple[str, str, float]:
 
 def _scoped_company_keys(tenant: dict[str, Any]) -> set[str]:
     """Normalized company names the tenant is allowed to see (clients only)."""
-    leads = scope_leads(tenant, store.get_leads(limit=300))
+    leads = scope_leads(tenant, store.get_leads(limit=2000))
     return {normalize_company_name(l.get("company_name", "")) for l in leads}
 
 
@@ -124,7 +124,7 @@ def signals_page(
 def companies_page(request: Request, user: dict = Depends(require_user)) -> HTMLResponse:
     """Company directory — every company in the tenant's pool, with its info."""
     tenant = resolve_tenant(user)
-    companies = scope_leads(tenant, store.get_leads(limit=300))
+    companies = scope_leads(tenant, store.get_leads(limit=2000))
     return templates.TemplateResponse(
         request,
         "companies.html",
@@ -199,7 +199,7 @@ def analytics_page(request: Request, user: dict = Depends(require_user)) -> HTML
     """Analytics over the tenant's leads — coverage by source, signal types,
     and the intent profile (no scoring; just where leads come from)."""
     tenant = resolve_tenant(user)
-    leads = scope_leads(tenant, store.get_leads(limit=300))
+    leads = scope_leads(tenant, store.get_leads(limit=2000))
     total = len(leads)
 
     src: Counter = Counter()

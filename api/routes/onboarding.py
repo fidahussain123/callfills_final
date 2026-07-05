@@ -369,7 +369,7 @@ async def preview_pipeline(
         pool_size = len(leads)
     else:
         temp = {"vertical": vertical, "min_score": int(min_score), "filters": filters}
-        pool = store.get_leads(limit=300)
+        pool = store.get_leads(limit=2000)
         leads = apply_icp(pool, temp)
         pool_size = len(pool)
     return templates.TemplateResponse(
@@ -596,7 +596,10 @@ def pipeline_detail(
     if not client:
         return RedirectResponse("/pipelines", status_code=303)
 
-    leads = apply_icp(store.get_leads(limit=300), client)
+    # Read this pipeline's whole vertical BEFORE scoping — get_leads() returns
+    # the top-N by score, so a low-scored lead (e.g. a LinkedIn profile at 40)
+    # would be truncated past the cap and never reach apply_icp otherwise.
+    leads = apply_icp(store.get_leads(vertical=client.get("vertical"), limit=2000), client)
     return templates.TemplateResponse(
         request,
         "pipeline_detail.html",
